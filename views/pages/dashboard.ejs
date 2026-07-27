@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Dashboard — SvenTV', cssFile: 'dashboard' }) %></head>
+<body>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'dashboard' }) %>
+<%- include('../partials/flash') %>
+
+<main class="dashboard-main">
+  <!-- ── Controls ────────────────────────────────────────── -->
+  <div class="dashboard-controls">
+    <div class="dashboard-search-wrap">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input
+        type="search" id="searchInput" class="form-input search-input"
+        placeholder="Buscar canais..." autocomplete="off"
+      >
+    </div>
+
+    <div class="dashboard-filters">
+      <select id="categoryFilter" class="form-input filter-select">
+        <option value="">Todas as categorias</option>
+      </select>
+
+      <div class="view-toggle">
+        <button class="view-btn active" id="gridViewBtn" title="Grade" aria-label="Modo grade">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </button>
+        <button class="view-btn" id="listViewBtn" title="Lista" aria-label="Modo lista">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stats ───────────────────────────────────────────── -->
+  <div class="dashboard-stats">
+    <div class="stat-chip">
+      <span class="stat-chip-label">Total</span>
+      <span class="stat-chip-value" id="totalCount">—</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-chip-label">Exibindo</span>
+      <span class="stat-chip-value" id="showingCount">—</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-chip-label">Categorias</span>
+      <span class="stat-chip-value" id="catCount">—</span>
+    </div>
+  </div>
+
+  <!-- ── Channel grid ──────────────────────────────────────── -->
+  <div id="channelGrid" class="channel-grid">
+    <!-- Skeletons de carregamento -->
+    <% for(let i = 0; i < 12; i++) { %>
+    <div class="channel-skeleton">
+      <div class="sk-thumb skeleton"></div>
+      <div class="sk-body">
+        <div class="sk-title skeleton"></div>
+        <div class="sk-sub skeleton"></div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- ── Paginação ─────────────────────────────────────────── -->
+  <div class="pagination" id="pagination" hidden>
+    <button class="page-btn" id="prevPage" disabled>← Anterior</button>
+    <div class="page-numbers" id="pageNumbers"></div>
+    <button class="page-btn" id="nextPage">Próxima →</button>
+  </div>
+</main>
+
+<!-- ── Modal Player ───────────────────────────────────────── -->
+<div class="modal-overlay" id="playerModal" hidden>
+  <div class="modal-container">
+    <div class="modal-header">
+      <div class="modal-channel-info">
+        <img class="modal-logo" id="modalLogo" src="" alt="" onerror="this.style.display='none'">
+        <div>
+          <h3 class="modal-title" id="modalTitle">Canal</h3>
+          <span class="badge" id="modalCategory"></span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="copyUrlBtn">📋 Copiar URL</button>
+        <button class="modal-close" id="modalClose" aria-label="Fechar">✕</button>
+      </div>
+    </div>
+    <!-- Player personalizado carregado via iframe -->
+    <div class="modal-player-wrap">
+      <iframe
+        id="playerFrame"
+        class="player-iframe"
+        src="about:blank"
+        allowfullscreen
+        allow="autoplay; fullscreen; picture-in-picture"
+        frameborder="0"
+        scrolling="no"
+        title="Player SvenTV"
+      ></iframe>
+      <div class="player-error" id="playerError" hidden>
+        <span>⚠️</span>
+        <p>Canal não disponível ou ID inválido.</p>
+        <button class="btn btn-ghost btn-sm" id="retryBtn">Tentar novamente</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dados do usuário para o JS (data island — sem risco de XSS nem erro de linter) -->
+<script type="application/json" id="__USER_DATA__"><%- JSON.stringify({
+  name:          locals.user     ? locals.user.name     : null,
+  apiToken:      locals.user     ? locals.user.apiToken : null,
+  channels:      locals.channels    || [],
+  categories:    locals.categories  || [],
+  totalChannels: locals.totalChannels || 0
+}) %></script>
+<%- include('../partials/footer') %>
+<script src="/js/dashboard.js"></script>
+</body>
+</html>

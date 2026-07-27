@@ -1,0 +1,91 @@
+<header class="navbar">
+  <div class="navbar-inner">
+
+    <%# Logo %>
+    <a href="/" class="navbar-brand">
+      <div class="brand-icon">
+        <img src="/img/radio.svg" alt="Logo">
+      </div>
+      <span class="brand-name">Sven<span class="brand-accent">TV</span></span>
+    </a>
+
+    <%# Links centrais %>
+    <nav class="navbar-links">
+      <a href="/" class="nav-link <%= activePage === 'home' ? 'active' : '' %>">Início</a>
+      <% if (user) { %>
+        <a href="/dashboard" class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>">Dashboard</a>
+        <% if (user.role === 'admin') { %>
+          <a href="/admin" class="nav-link <%= activePage === 'admin' ? 'active' : '' %>">Admin</a>
+        <% } %>
+      <% } %>
+      <a href="/docs" class="nav-link <%= activePage === 'docs' ? 'active' : '' %>">Documentação</a>
+    </nav>
+
+    <%# Ações à direita %>
+    <div class="navbar-actions">
+      <% if (user) { %>
+        <a href="/profile" class="btn-avatar" title="Meu perfil">
+          <% if (user.avatar) { %>
+            <img src="<%= user.avatar %>" alt="Avatar" class="avatar-img">
+          <% } else { %>
+            <span class="avatar-initials"><%= user.name.charAt(0).toUpperCase() %></span>
+          <% } %>
+        </a>
+        <button id="logoutBtn" class="btn btn-ghost btn-sm">Sair</button>
+      <% } else { %>
+        <a href="/login" class="btn btn-ghost btn-sm">Entrar</a>
+        <a href="/register" class="btn btn-primary btn-sm">Criar conta</a>
+      <% } %>
+    </div>
+
+    <%# Hamburguer mobile %>
+    <button class="navbar-toggle" id="navToggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+
+  </div>
+
+  <%# Menu mobile %>
+  <div class="navbar-mobile" id="navMobile">
+    <a href="/" class="nav-link-mobile">Início</a>
+    <% if (user) { %>
+      <a href="/dashboard" class="nav-link-mobile">Dashboard</a>
+    <% } %>
+    <a href="/docs" class="nav-link-mobile">Documentação</a>
+    <% if (user && user.role === 'admin') { %>
+      <a href="/admin" class="nav-link-mobile">Admin</a>
+    <% } %>
+    <hr class="mobile-divider">
+    <% if (user) { %>
+      <a href="/profile" class="nav-link-mobile">Meu Perfil</a>
+      <button id="logoutBtnMobile" class="nav-link-mobile btn-logout-mobile">Sair</button>
+    <% } else { %>
+      <a href="/login" class="nav-link-mobile">Entrar</a>
+      <a href="/register" class="nav-link-mobile nav-link-highlight">Criar conta</a>
+    <% } %>
+  </div>
+</header>
+
+<script>
+  // Toggle menu mobile
+  document.getElementById('navToggle')?.addEventListener('click', () => {
+    document.getElementById('navMobile')?.classList.toggle('open');
+  });
+
+  // Logout
+  async function doLogout() {
+    const token = localStorage.getItem('sessionToken');
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+    } catch(_) {}
+    localStorage.removeItem('sessionToken');
+    localStorage.removeItem('apiToken');
+    localStorage.removeItem('user');
+    window.location.href = '/';
+  }
+  document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
+  document.getElementById('logoutBtnMobile')?.addEventListener('click', doLogout);
+</script>

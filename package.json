@@ -1,0 +1,50 @@
+{
+  "name": "api-stream-m3u8",
+  "version": "2.0.0",
+  "description": "API de streaming de canais de TV ao vivo com autenticação JWT, Prisma e rate limiting",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "generate:secrets": "node -e \"const c=require('crypto');console.log('JWT_SECRET='+c.randomBytes(64).toString('hex'));console.log('JWT_API_SECRET='+c.randomBytes(64).toString('hex'));\"",
+    "prisma:generate": "prisma generate",
+    "prisma:pull": "prisma db pull",
+    "prisma:migrate": "prisma migrate deploy"
+  },
+  "keywords": [
+    "tv",
+    "streaming",
+    "m3u",
+    "api",
+    "nodejs"
+  ],
+  "author": "Jonathas Enterprises",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
+    "axios": "^1.12.2",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "ejs": "^5.0.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.3.1",
+    "express-session": "^1.19.0",
+    "fs": "0.0.1-security",
+    "helmet": "^7.0.0",
+    "joi": "^18.0.2",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "multer": "^2.1.1",
+    "node-cache": "^5.1.2",
+    "path": "^0.12.7",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.11.1",
+    "nodemon": "^3.0.1",
+    "prisma": "^6.11.1"
+  }
+}

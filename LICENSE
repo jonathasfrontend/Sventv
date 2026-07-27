@@ -1,0 +1,427 @@
+Jonathas Enterprises Proprietary Software License (JEPSL)
+
+Versão 1.0 – Licença Proprietária Exclusiva
+
+DECLARAÇÃO DE PROPRIEDADE INTELECTUAL
+
+Este software, incluindo mas não se limitando ao código-fonte, código-objeto, documentação, algoritmos, estruturas de dados, interfaces, designs, arquivos de configuração, bibliotecas, scripts, bancos de dados e todos os demais componentes relacionados (coletivamente denominados "Software"), é propriedade exclusiva e integral de:
+
+JONATHAS ENTERPRISES  
+Titular dos Direitos Autorais
+
+© [2025] Jonathas Enterprises. Todos os direitos reservados.
+
+IDENTIFICAÇÃO DO PROJETO
+
+- Nome do Projeto: Api Stream IPTV
+- Autor/Organização: Jonathas Enterprises
+- Contato Oficial: jonathass5678@gmail.com
+- Website: .
+- Jurisdição: República Federativa do Brasil
+
+NATUREZA DESTA LICENÇA
+
+Esta é uma Licença Proprietária Exclusiva. O Software é protegido pelas leis de direitos autorais brasileiras e internacionais, incluindo, mas não se limitando à:
+
+- Lei nº 9.609/98 (Lei do Software)
+- Lei nº 9.610/98 (Lei de Direitos Autorais)
+- Convenção de Berna
+- TRIPS (Agreement on Trade-Related Aspects of Intellectual Property Rights)
+- WIPO Copyright Treaty
+
+O Software NÃO É de código aberto, livre ou de domínio público.
+
+DEFINIÇÕES LEGAIS
+
+Para os fins desta Licença, aplicam-se as seguintes definições:
+
+1. "Software": Todos os arquivos, códigos, documentações e componentes associados a este projeto.
+2. "Licenciante": Jonathas Enterprises, titular exclusivo dos direitos autorais.
+3. "Licenciado": Qualquer pessoa física ou jurídica que acesse, visualize ou utilize o Software.
+4. "Uso Autorizado": Qualquer utilização expressamente permitida por escrito pelo Licenciante.
+5. "Uso Comercial": Qualquer exploração do Software com fins lucrativos, incluindo venda, licenciamento, prestação de serviços, integração em produtos comerciais ou qualquer atividade que gere receita direta ou indireta.
+6. "Derivação": Qualquer modificação, adaptação, tradução, descompilação, engenharia reversa ou criação baseada no Software.
+7. "Redistribuição": Qualquer forma de distribuição, publicação, transmissão, compartilhamento ou disponibilização do Software a terceiros.
+
+CONCESSÃO LIMITADA DE USO
+
+1. Permissões Restritas
+
+O Licenciado pode APENAS:
+
+- Visualizar o código-fonte para fins de análise pessoal, educacional e não comercial;
+- Executar o Software em ambiente local para testes e avaliação, desde que sem fins comerciais;
+- Estudar a estrutura e lógica do código para fins acadêmicos, sem reprodução ou redistribuição.
+
+2. Requisito de Autorização
+
+QUALQUER USO além das permissões acima requer autorização expressa, formal e por escrito do Licenciante, incluindo:
+
+- Assinatura de contrato de licenciamento específico;
+- Definição de escopo de uso;
+- Pagamento de eventuais royalties ou taxas de licenciamento;
+- Concordância com termos adicionais estabelecidos pelo Licenciante.
+
+3. Natureza Revogável
+
+Esta concessão limitada é:
+
+- Não exclusiva: O Licenciante pode conceder licenças a outros;
+- Intransferível: O Licenciado não pode transferir direitos a terceiros;
+- Revogável: Pode ser cancelada a qualquer momento pelo Licenciante;
+- Condicional: Sujeita ao cumprimento integral desta Licença.
+
+RESTRIÇÕES ABSOLUTAS
+
+O Licenciado está EXPRESSAMENTE PROIBIDO de:
+
+1. Uso Comercial
+
+- Utilizar o Software para gerar receita direta ou indireta;
+- Integrar o Software em produtos ou serviços comerciais;
+- Oferecer o Software como serviço (SaaS);
+- Vender, alugar, arrendar ou sublicenciar o Software;
+- Usar o Software em ambiente de produção comercial;
+- Explorar economicamente qualquer funcionalidade do Software.
+
+2. Modificação e Derivação
+
+- Modificar, adaptar, traduzir ou criar obras derivadas;
+- Realizar engenharia reversa, descompilação ou desmontagem;
+- Extrair algoritmos, lógica de negócio ou componentes;
+- Criar versões alternativas ou compatíveis;
+- Remover ou alterar avisos de direitos autorais;
+- Criar forks, branches ou versões paralelas.
+
+3. Redistribuição e Compartilhamento
+
+- Distribuir, publicar, transmitir ou disponibilizar o Software;
+- Compartilhar o código-fonte ou binários em repositórios públicos ou privados;
+- Incorporar o Software em bibliotecas ou frameworks de terceiros;
+- Reempacotar, rebundlar ou incluir em pacotes de software;
+- Hospedar o Software em servidores públicos ou de terceiros;
+- Fornecer acesso ao Software através de APIs ou interfaces públicas.
+
+4. Uso Indevido
+
+- Utilizar o Software para fins ilegais, antiéticos ou prejudiciais;
+- Burlar mecanismos de segurança, autenticação ou licenciamento;
+- Realizar testes de penetração ou auditoria de segurança sem autorização;
+- Utilizar o Software para comprometer sistemas de terceiros;
+- Violar direitos de terceiros através do uso do Software.
+
+5. Remoção de Identificação
+
+- Remover, obscurecer ou alterar avisos de copyright;
+- Remover ou modificar esta Licença;
+- Apresentar o Software como criação própria;
+- Omitir a autoria de Jonathas Enterprises.
+
+🏛️ PROPRIEDADE INTELECTUAL
+
+1. Titularidade Integral
+
+Jonathas Enterprises detém integral, exclusiva e perpetuamente todos os direitos, títulos e interesses sobre:
+
+- Direitos autorais (copyright);
+- Direitos morais de autor;
+- Direitos patrimoniais;
+- Marcas registradas;
+- Segredos comerciais;
+- Patentes (quando aplicável);
+- Know-how e metodologias;
+- Direitos de banco de dados.
+
+2. Não Transferência de Direitos
+
+Esta Licença NÃO TRANSFERE qualquer direito de propriedade intelectual ao Licenciado. O Licenciado:
+
+- Não adquire propriedade sobre o Software;
+- Não pode reivindicar autoria ou co-autoria;
+- Não tem direitos de exploração econômica;
+- Não pode registrar o Software em seu nome.
+
+3. Contribuições de Terceiros
+
+Qualquer contribuição, sugestão, feedback ou modificação proposta ao Software:
+
+- Torna-se automaticamente propriedade de Jonathas Enterprises;
+- Pode ser incorporada sem compensação adicional;
+- Não gera direitos de propriedade ao contribuinte;
+- Deve ser submetida mediante termo de cessão de direitos.
+
+ISENÇÃO DE GARANTIAS
+
+Fornecimento "No Estado em que Se Encontra"
+
+O Software é fornecido "AS IS" (como está) e "AS AVAILABLE" (conforme disponível), SEM GARANTIAS DE QUALQUER NATUREZA, expressas ou implícitas, incluindo, mas não se limitando a:
+
+- Garantias de comercialização;
+- Adequação a propósitos específicos;
+- Não violação de direitos de terceiros;
+- Ausência de erros ou bugs;
+- Funcionamento ininterrupto;
+- Segurança absoluta;
+- Compatibilidade com sistemas específicos;
+- Resultados específicos.
+
+2. Risco Integral do Licenciado
+
+O Licenciado assume INTEGRALMENTE todos os riscos relacionados:
+
+- À qualidade do Software;
+- Ao desempenho e funcionalidade;
+- À adequação aos seus propósitos;
+- A possíveis danos ou perdas decorrentes do uso;
+- À segurança e proteção de dados.
+
+3. Não Obrigação de Suporte
+
+O Licenciante NÃO TEM OBRIGAÇÃO de fornecer:
+
+- Suporte técnico;
+- Atualizações ou patches;
+- Correção de bugs;
+- Documentação adicional;
+- Treinamento ou consultoria;
+- Manutenção ou melhorias.
+
+LIMITAÇÃO DE RESPONSABILIDADE
+
+1. Exclusão de Danos
+
+EM NENHUMA HIPÓTESE o Licenciante será responsável por:
+
+- Danos diretos, indiretos, incidentais, especiais, punitivos ou consequenciais;
+- Perda de lucros, receitas, dados ou oportunidades de negócio;
+- Interrupção de negócios ou perda de goodwill;
+- Custos de aquisição de produtos ou serviços substitutos;
+- Danos a sistemas, hardware ou software;
+- Violações de segurança ou perda de dados;
+- Reclamações de terceiros.
+
+2. Limitação Máxima
+
+Caso alguma responsabilidade seja imposta por lei, o valor máximo de indenização será limitado a R$ 0,00 (zero reais) ou ao valor efetivamente pago pelo Licenciado ao Licenciante pela licença específica, o que for menor.
+
+3. Fundamento Legal
+
+Esta limitação aplica-se:
+
+- Independentemente da teoria legal (contrato, responsabilidade civil, negligência);
+- Mesmo que o Licenciante tenha sido avisado da possibilidade de tais danos;
+- Mesmo que remédios legais falhem em seu propósito essencial;
+- Até o limite máximo permitido pela legislação aplicável.
+
+RESCISÃO AUTOMÁTICA
+
+1. Causas de Rescisão
+
+Esta Licença será AUTOMATICAMENTE RESCINDIDA, sem necessidade de notificação prévia, em caso de:
+
+- Qualquer violação dos termos desta Licença;
+- Uso comercial não autorizado;
+- Redistribuição do Software;
+- Modificação ou criação de obras derivadas;
+- Engenharia reversa ou descompilação;
+- Remoção de avisos de copyright;
+- Qualquer tentativa de burlar as restrições desta Licença.
+
+2. Efeitos da Rescisão
+
+Após a rescisão, o Licenciado deve IMEDIATAMENTE:
+
+- Cessar todo e qualquer uso do Software;
+- Destruir todas as cópias do Software em sua posse;
+- Remover o Software de todos os sistemas e dispositivos;
+- Confirmar por escrito a destruição completa ao Licenciante;
+- Cessar qualquer distribuição ou disponibilização a terceiros.
+
+3. Sobrevivência de Cláusulas
+
+As seguintes cláusulas sobrevivem à rescisão:
+
+- Propriedade Intelectual;
+- Isenção de Garantias;
+- Limitação de Responsabilidade;
+- Indenização;
+- Jurisdição e Lei Aplicável.
+
+INDENIZAÇÃO
+
+O Licenciado concorda em INDENIZAR, DEFENDER E ISENTAR Jonathas Enterprises, seus diretores, funcionários, contratados e afiliados de:
+
+- Todas as reclamações, ações, demandas e processos judiciais;
+- Todas as perdas, danos, responsabilidades, custos e despesas;
+- Honorários advocatícios e custas processuais;
+
+Decorrentes de ou relacionados a:
+
+- Violação desta Licença pelo Licenciado;
+- Uso indevido ou não autorizado do Software;
+- Violação de direitos de terceiros;
+- Violação de leis ou regulamentos aplicáveis.
+
+JURISDIÇÃO E LEI APLICÁVEL
+
+1. Lei Regente
+
+Esta Licença será regida e interpretada de acordo com as leis da República Federativa do Brasil, especialmente:
+
+- Código Civil Brasileiro (Lei nº 10.406/2002);
+- Lei do Software (Lei nº 9.609/98);
+- Lei de Direitos Autorais (Lei nº 9.610/98);
+- Marco Civil da Internet (Lei nº 12.965/2014);
+- Lei Geral de Proteção de Dados (Lei nº 13.709/2018).
+
+2. Foro Competente
+
+As partes elegem o foro da comarca de Ponta Grossa/PR Brasil como único competente para dirimir quaisquer controvérsias oriundas desta Licença, renunciando expressamente a qualquer outro, por mais privilegiado que seja.
+
+3. Idioma Oficial
+
+A versão oficial desta Licença é em português (Brasil). Quaisquer traduções são fornecidas apenas para conveniência e não têm força legal.
+
+MODIFICAÇÕES DA LICENÇA
+
+1. Direito de Modificação
+
+Jonathas Enterprises reserva-se o direito de:
+
+- Modificar os termos desta Licença a qualquer momento;
+- Alterar permissões e restrições;
+- Atualizar definições e cláusulas;
+- Adicionar novos requisitos.
+
+2. Notificação de Mudanças
+
+Modificações serão:
+
+- Publicadas no repositório oficial do Software;
+- Indicadas através de atualização do número de versão;
+- Efetivas imediatamente após publicação.
+
+3. Aceitação Tácita
+
+O uso continuado do Software após modificações constitui aceitação tácita dos novos termos.
+
+CONTATO OFICIAL
+
+Para solicitações de licenciamento comercial, autorizações especiais, parcerias ou esclarecimentos:
+
+Jonathas Enterprises
+
+- Email: jonathass5678@gmail.com
+- Website: .
+- Repositório: https://github.com/Jonathas-Enterprises/api-stream-m3u8.git
+
+PROTEÇÃO ADICIONAL
+
+1. Auditoria de Uso
+
+Jonathas Enterprises reserva-se o direito de:
+
+- Auditar o uso do Software pelo Licenciado;
+- Solicitar informações sobre a implementação;
+- Verificar conformidade com esta Licença;
+- Monitorar distribuições não autorizadas.
+
+2. Medidas Técnicas de Proteção
+
+O Software pode conter:
+
+- Mecanismos de autenticação e licenciamento;
+- Sistemas de rastreamento e telemetria;
+- Marcas d'água digitais;
+- Sistemas de detecção de violações.
+
+É EXPRESSAMENTE PROIBIDO burlar, desativar ou contornar tais mecanismos.
+
+3. Notificação de Violações
+
+Se o Licenciado tomar conhecimento de violações desta Licença por terceiros, deve:
+
+- Notificar imediatamente Jonathas Enterprises;
+- Fornecer informações detalhadas sobre a violação;
+- Cooperar com eventuais medidas legais.
+
+DISPOSIÇÕES GERAIS
+
+1. Integralidade do Acordo
+
+Esta Licença constitui o acordo integral entre as partes, substituindo todos os acordos anteriores, orais ou escritos.
+
+2. Divisibilidade
+
+Se qualquer cláusula for considerada inválida ou inexequível, as demais cláusulas permanecerão em pleno vigor e efeito.
+
+3. Renúncia
+
+A falha do Licenciante em exercer qualquer direito não constitui renúncia a tal direito.
+
+4. Cessão
+
+O Licenciado não pode ceder ou transferir esta Licença. Jonathas Enterprises pode ceder livremente seus direitos.
+
+5. Notificações
+
+Todas as notificações devem ser enviadas por escrito para os endereços de contato oficiais.
+
+6. Força Maior
+
+Nenhuma parte será responsável por atrasos ou falhas causadas por eventos de força maior.
+
+7. Relação entre as Partes
+
+Esta Licença não cria relação de parceria, joint venture, emprego ou agência entre as partes.
+
+ACEITAÇÃO DOS TERMOS
+
+AO ACESSAR, BAIXAR, CLONAR, VISUALIZAR, EXECUTAR OU UTILIZAR DE QUALQUER FORMA ESTE SOFTWARE, VOCÊ RECONHECE QUE LEU, COMPREENDEU E CONCORDA EM ESTAR VINCULADO A TODOS OS TERMOS E CONDIÇÕES DESTA LICENÇA.
+
+SE VOCÊ NÃO CONCORDA COM ESTES TERMOS, NÃO ESTÁ AUTORIZADO A USAR ESTE SOFTWARE E DEVE DELETÁ-LO IMEDIATAMENTE DE TODOS OS SEUS SISTEMAS.
+
+ESTATÍSTICAS DE USO E CONFORMIDADE
+
+Jonathas Enterprises pode coletar dados agregados e anonimizados sobre:
+
+- Padrões de uso do Software;
+- Métricas de desempenho;
+- Estatísticas de erro e falhas;
+- Informações de sistema e ambiente.
+
+Tais dados serão utilizados exclusivamente para melhorias do Software e não identificarão individualmente os Licenciados.
+
+RECONHECIMENTOS
+
+O Licenciado reconhece que:
+
+1. O Software representa investimento significativo de tempo, recursos e expertise;
+2. O Software contém informações proprietárias e confidenciais;
+3. A violação desta Licença causará danos irreparáveis a Jonathas Enterprises;
+4. Remédios legais podem não ser adequados para compensar tais danos;
+5. Jonathas Enterprises terá direito a medidas cautelares e liminares em caso de violação.
+
+DECLARAÇÃO FINAL
+
+Este Software é resultado do trabalho intelectual, criativo e técnico de Jonathas Enterprises. Representa inovação, dedicação e expertise acumulados ao longo do tempo. A proteção rigorosa destes direitos é essencial para a continuidade do desenvolvimento e inovação.
+
+O respeito à propriedade intelectual é fundamental para o ecossistema tecnológico. Ao utilizar este Software, você se compromete a honrar os direitos do criador e contribuir para um ambiente de desenvolvimento justo e ético.
+
+© [2025] Jonathas Enterprises. Todos os direitos reservados.
+
+Licença Proprietária Exclusiva – Versão 1.0
+
+Documento Legal Vinculativo – Consulte Advogado para Dúvidas Específicas
+
+INSTRUÇÕES DE PERSONALIZAÇÃO
+
+- © 2024 Jonathas Enterprises. Todos os direitos reservados.
+- Nome do Projeto: API Stream IPTV
+- Autor/Organização: Jonathas Enterprises
+- Contato Oficial: jonathass5678@gmail.com
+- Website: .
+- Jurisdição: Ponta Grossa/PR, Brasil - República Federativa do Brasil
+- URL do Repositório GitHub → https://github.com/Jonathas-Enterprises/api-stream-m3u8.git
+
+🔒 Esta licença foi criada para proteger integralmente seus direitos autorais e propriedade intelectual.

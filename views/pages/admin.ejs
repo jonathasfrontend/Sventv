@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Painel Administrativo — SvenTV', cssFile: 'admin' }) %></head>
+<body>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'admin' }) %>
+<%- include('../partials/flash') %>
+
+<main class="admin-main">
+  <section class="admin-hero">
+    <div>
+      <span class="badge badge-primary">Admin</span>
+      <h1>Painel Administrativo</h1>
+      <p>Gestão de canais, usuários e monitoramento de streams.</p>
+    </div>
+    <div class="admin-hero-actions">
+      <button class="btn btn-ghost btn-sm" id="refreshAdminBtn">Atualizar tudo</button>
+    </div>
+  </section>
+
+  <section class="admin-kpis" id="adminKpis">
+    <div class="admin-kpi-card"><span>Total Canais</span><strong id="kpiChannels">—</strong></div>
+    <div class="admin-kpi-card kpi-online"><span>Online</span><strong id="kpiOnline">—</strong></div>
+    <div class="admin-kpi-card kpi-offline"><span>Offline</span><strong id="kpiOffline">—</strong></div>
+    <div class="admin-kpi-card"><span>Usuários</span><strong id="kpiUsers">—</strong></div>
+  </section>
+
+  <section class="admin-panel admin-channels-panel">
+    <div class="admin-panel-header">
+      <h2>Canais</h2>
+      <div class="admin-panel-filters">
+        <input type="search" id="channelSearch" class="form-input" placeholder="Buscar canal...">
+        <select id="channelStatusFilter" class="form-input">
+          <option value="">Todos os status</option>
+          <option value="online">Online</option>
+          <option value="offline">Offline</option>
+          <option value="unknown">Não verificado</option>
+        </select>
+        <select id="channelCategoryFilter" class="form-input">
+          <option value="">Todas categorias</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="checkAllChannelsBtn" title="Verificar saúde de todos os canais">Verificar tudo</button>
+        <button class="btn btn-ghost btn-sm" id="reloadChannelsBtn" title="Recarregar lista de canais do arquivo M3U">Recarregar M3U</button>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table class="admin-table admin-table--channels">
+        <thead>
+          <tr>
+            <th class="ch-col-logo"></th>
+            <th>Canal</th>
+            <th>Categoria</th>
+            <th>Formato</th>
+            <th>Status</th>
+            <th>Verificado</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="channelsTableBody">
+          <tr><td colspan="7">Carregando canais...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="admin-panel admin-users-panel">
+    <div class="admin-panel-header">
+      <h2>Usuários</h2>
+      <div class="admin-panel-filters">
+        <input type="search" id="userSearch" class="form-input" placeholder="Buscar por nome ou e-mail">
+        <select id="roleFilter" class="form-input">
+          <option value="">Todas as roles</option>
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Role</th>
+            <th>Plano</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="usersTableBody">
+          <tr><td colspan="5">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script type="application/json" id="__ADMIN_DATA__"><%- JSON.stringify({
+  user: locals.user || null
+}) %></script>
+<%- include('../partials/footer') %>
+<script src="/js/admin.js"></script>
+</body>
+</html>

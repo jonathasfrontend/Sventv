@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{CHANNEL_NAME}} - SvenTV</title>
+  <link rel="stylesheet" href="/Player/player.css">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+</head>
+
+<body>
+  <div class="player" id="playerContainer">
+
+    <div class="player_info" id="channelInfo">
+      <!-- Channel Info -->
+      <div class="player_content">
+        <div class="player__channel-name">{{CHANNEL_NAME}}</div>
+      </div>
+      <!-- Badge AO VIVO -->
+      <div class="player__badge--live" id="liveBadge" style="display: none;">
+        <p class="player__badge-text">AO VIVO</p>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="player__loading" id="loading">
+      <div class="player__spinner"></div>
+    </div>
+
+    <!-- Error Message -->
+    <div class="player__error" id="errorMessage">
+      <div class="player__error-content">
+        <p class="player__error-message">Erro de rede. Tente novamente mais tarde.</p>
+        <button class="player__error-btn" onclick="location.reload()"> <img src="/Player/assets/icons/arrows-counter-clockwise.svg" class="player__error-icon"> Recarregar player</button>
+      </div>
+    </div>
+
+    <!-- Overlay de Estatísticas -->
+    <div class="player__stats" id="statsOverlay">
+      <div class="player__stats-title">📊 Estatísticas do Vídeo</div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Resolução:</span>
+        <span class="player__stats-value" id="statResolution">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Bitrate:</span>
+        <span class="player__stats-value" id="statBitrate">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Qualidade:</span>
+        <span class="player__stats-value" id="statQuality">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">FPS:</span>
+        <span class="player__stats-value" id="statFps">N/A</span>
+      </div>
+
+      <div class="player__stats-divider"></div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Latência ao Vivo:</span>
+        <span class="player__stats-value" id="statLatency">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Tamanho do Buffer:</span>
+        <span class="player__stats-value" id="statBuffer">N/A</span>
+      </div>
+
+      <div class="player__stats-divider"></div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Estado:</span>
+        <span class="player__stats-value" id="statState">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Frames Perdidos:</span>
+        <span class="player__stats-value" id="statFrames">N/A</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Tempo Reproduzido:</span>
+        <span class="player__stats-value" id="statTime">00:00</span>
+      </div>
+
+      <div class="player__stats-row">
+        <span class="player__stats-label">Velocidade:</span>
+        <span class="player__stats-value" id="statRate">1.0x</span>
+      </div>
+    </div>
+
+    <!-- Elemento de vídeo -->
+    <video class="player__video" id="videoElement" autoplay muted playsinline preload="none" x-webkit-airplay="deny"></video>
+
+    <!-- Controles customizados -->
+    <div class="player__controls" id="controls">
+      <div class="player__controls-wrapper">
+
+        <!-- Esquerda: Play + Volume -->
+        <div class="player__controls-left">
+          <button class="player__btn" id="playBtn" title="Play/Pause">
+            <img src="/Player/assets/icons/play.svg" class="player__icon" id="playIcon">
+          </button>
+
+          <div class="player__volume">
+
+            <button class="player__btn" id="volumeBtn" title="Mute/Unmute">
+              <img src="/Player/assets/icons/speaker-high.svg" class="player__icon" id="volumeIcon">
+            </button>
+
+            <div class="player__volume-slider">
+              <input type="range" min="0" max="1" step="0.01" value="1" id="volumeRange">
+
+              <div class="player__volume-track">
+                <div class="player__volume-fill" id="volumeFill"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Direita: Settings + PiP + Fullscreen -->
+        <div class="player__controls-right">
+          <button class="player__btn" id="settingsBtn" title="Configurações">
+            <img src="/Player/assets/icons/gear.svg" class="player__icon">
+          </button>
+
+          <button class="player__btn" id="pipBtn" title="Picture in Picture">
+            <img src="/Player/assets/icons/rectangle.svg" class="player__icon">
+          </button>
+
+          <button class="player__btn" id="fullscreenBtn" title="Fullscreen">
+            <img src="/Player/assets/icons/corners-out.svg" class="player__icon" id="fullscreenIcon">
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Menu de Configurações -->
+    <div class="player__settings-menu" id="settingsMenu">
+
+      <!-- Seção: Qualidade -->
+      <div class="player__settings-section">
+        <div class="player__settings-section-title">Qualidade</div>
+        <div class="player__settings-quality-list">
+          <select class="player__settings-quality-select" id="qualityList">
+            <option value="-1">Automática</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Seção: Avançado -->
+      <div class="player__settings-section" id="advancedSection">
+        <div class="player__settings-section-title">Avançado</div>
+
+        <!-- Checkbox: Baixa Latência -->
+        <label class="player__settings-checkbox-label" id="lowLatencyLabel" style="display: none;">
+          <div class="player__settings-checkbox-wrapper">
+            <input type="checkbox" hidden class="player__settings-checkbox" id="lowLatencyCheckbox">
+            <span class="player__settings-checkbox-custom">
+              <jo class="jonabtn"></jo>
+            </span>
+            <div class="player__settings-checkbox-text">
+              <div class="player__settings-checkbox-title">Baixa Latência</div>
+            </div>
+          </div>
+        </label>
+
+        <!-- Checkbox: Estatísticas -->
+        <label class="player__settings-checkbox-label">
+          <div class="player__settings-checkbox-wrapper">
+            <input type="checkbox" hidden class="player__settings-checkbox" id="showStatsCheckbox">
+            <div class="player__settings-checkbox-text">
+              <div class="player__settings-checkbox-title">Estatísticas do Vídeo</div>
+            </div>
+          </div>
+        </label>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // Dados do canal injetados server-side
+    const CHANNEL_DATA = {
+      name: '{{CHANNEL_NAME}}',
+      url: '{{CHANNEL_URL}}',
+      logo: '{{CHANNEL_LOGO}}',
+      category: '{{CHANNEL_CATEGORY}}',
+      quality: '{{CHANNEL_QUALITY}}'
+    };
+  </script>
+  <script src="/Player/player.js"></script>
+</body>
+
+</html>

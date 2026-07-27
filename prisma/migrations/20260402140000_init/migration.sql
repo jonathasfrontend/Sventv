@@ -1,0 +1,3 @@
+-- Initial migration - schema already synced via prisma db push
+-- This migration marks the baseline for future schema changes
+-- Payment model now includes activated_at field to track subscription sync

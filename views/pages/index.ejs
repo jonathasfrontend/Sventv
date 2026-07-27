@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head><%- include('../partials/head', { title: 'SvenTV — API de Streaming M3U8' , cssFile: 'landing' }) %></head>
+
+<body>
+  <%- include('../partials/navbar', { user: locals.user || null, activePage: 'home' }) %>
+    <%- include('../partials/flash') %>
+
+      <section class="hero">
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="badge badge-primary">✦ API v2.0</span>
+            <span class="badge">JWT · Rate Limit · Cache</span>
+          </div>
+          <h1 class="hero-title">
+            Streaming M3U8<br>
+            <span class="gradient-text">para Desenvolvedores</span>
+          </h1>
+          <p class="hero-desc">
+            Acesse milhares de canais ao vivo com uma API REST simples, segura e rápida.
+            Autenticação via token, filtros por categoria e suporte a múltiplas listas M3U8.
+          </p>
+          <div class="hero-actions">
+            <% if (locals.user) { %>
+              <a href="/dashboard" class="btn btn-primary btn-lg">Abrir Dashboard →</a>
+              <a href="/docs" class="btn btn-ghost btn-lg">Ver Documentação</a>
+              <% } else { %>
+                <a href="/register" class="btn btn-primary btn-lg">Começar Grátis →</a>
+                <a href="/docs" class="btn btn-ghost btn-lg">Ver Documentação</a>
+                <% } %>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><span class="hero-stat-num">10k+</span><span>Canais</span></div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat"><span class="hero-stat-num">99.9%</span><span>Uptime</span></div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat"><span class="hero-stat-num">&lt;50ms</span><span>Latência</span></div>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="code-preview">
+            <div class="code-preview-header">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+              <span class="code-preview-title">terminal</span>
+            </div>
+            <pre class="code-preview-body">
+              <span class="cp-comment"># Buscar canais de esportes</span>
+              <span class="cp-cmd">curl</span> <span class="cp-url">https://sventv.vercel.app/api/channels</span> \
+              <span class="cp-flag">-H</span> <span class="cp-str">"Authorization: Bearer seu_token"</span> \
+              <span class="cp-flag">-G</span> <span class="cp-flag">-d</span> <span class="cp-str">"category=sports&limit=10"</span>
+
+              <span class="cp-comment"># Resposta</span>
+              <span class="cp-brace">{</span>
+              <span class="cp-key">"success"</span>: <span class="cp-bool">true</span>,
+              <span class="cp-key">"total"</span>: <span class="cp-num">247</span>,
+              <span class="cp-key">"channels"</span>: [ <span class="cp-comment">...</span> ]
+              <span class="cp-brace">}</span>
+            </pre>
+          </div>
+          <div class="hero-visual-glow"></div>
+        </div>
+      </section>
+
+      <section class="features" id="features">
+        <div class="container">
+          <div class="section-header">
+            <span class="badge badge-primary">Recursos</span>
+            <h2 class="section-title">Tudo que você precisa</h2>
+            <p class="section-desc">Uma API completa para integrar streaming de canais ao vivo em sua aplicação.</p>
+          </div>
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">🔐</div>
+              <h3>Autenticação JWT</h3>
+              <p>Token de sessão e token de API separados. Segurança dupla com validade configurável.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">⚡</div>
+              <h3>Cache Inteligente</h3>
+              <p>Respostas cacheadas in-memory por namespace. Listas carregadas uma vez, servidas rapidamente.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">🛡️</div>
+              <h3>Rate Limiting</h3>
+              <p>Proteção contra abuso com limites por IP e por token. Configurável por tipo de rota.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">🔍</div>
+              <h3>Filtros Avançados</h3>
+              <p>Busca por nome, filtragem por categoria, paginação e ordenação em todos os endpoints.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">📺</div>
+              <h3>Múltiplas Listas</h3>
+              <p>Suporte a diversas fontes M3U8 com carregamento dinâmico e recarga sem restart.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">📊</div>
+              <h3>Dashboard Completo</h3>
+              <p>Interface web para gerenciar canais, visualizar estatísticas e testar streams ao vivo.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="plans" id="plans">
+        <div class="container">
+          <div class="section-header">
+            <h2 class="section-title">Simples e transparente</h2>
+            <p class="section-desc">Comece grátis. Escale quando precisar.</p>
+          </div>
+          <div class="plans-grid">
+
+            <div class="plan-card">
+              <div class="plan-name">Free</div>
+              <div class="plan-price"><span class="plan-amount">R$0</span><span class="plan-period">/mês</span></div>
+              <ul class="plan-features">
+                <li>✓ 100 req/min via API</li>
+                <li>✓ Listagem de canais</li>
+                <li>✓ Busca e filtros</li>
+                <li>✗ Stream proxy</li>
+                <li>✗ Suporte prioritário</li>
+              </ul>
+              <a href="/register" class="btn btn-ghost" style="width:100%">Criar Conta</a>
+            </div>
+
+            <div class="plan-card plan-card-featured">
+              <div class="plan-content">
+                <span class="plan-name">Basic</span>
+                <span class="plan-badge">Mais Popular</span>
+              </div>
+              <div class="plan-price"><span class="plan-amount">R$29</span><span class="plan-period">/mês</span></div>
+              <ul class="plan-features">
+                <li>✓ 500 req/min via API</li>
+                <li>✓ Listagem de canais</li>
+                <li>✓ Busca e filtros</li>
+                <li>✓ Stream proxy</li>
+                <li>✗ Suporte prioritário</li>
+              </ul>
+              <a href="/register" class="btn btn-primary" style="width:100%">Começar →</a>
+            </div>
+
+            <div class="plan-card">
+              <div class="plan-name">Premium</div>
+              <div class="plan-price"><span class="plan-amount">R$79</span><span class="plan-period">/mês</span></div>
+              <ul class="plan-features">
+                <li>✓ 2000 req/min via API</li>
+                <li>✓ Listagem de canais</li>
+                <li>✓ Busca e filtros</li>
+                <li>✓ Stream proxy</li>
+                <li>✓ Suporte prioritário</li>
+              </ul>
+              <a href="/register" class="btn btn-ghost" style="width:100%">Criar Conta</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <div class="cta-container">
+          <h2 class="cta-title">Pronto para começar?</h2>
+          <p class="cta-desc">Crie sua conta gratuitamente e obtenha seu API token em menos de 1 minuto.</p>
+          <div class="cta-actions">
+            <% if (locals.user) { %>
+              <a href="/dashboard" class="btn btn-primary btn-lg">Ir para Dashboard →</a>
+              <% } else { %>
+                <a href="/register" class="btn btn-primary btn-lg">Criar Conta Grátis →</a>
+                <a href="/login" class="btn btn-ghost btn-lg">Já tenho conta</a>
+                <% } %>
+          </div>
+        </div>
+      </section>
+
+      <%- include('../partials/footer') %>
+</body>
+
+</html>

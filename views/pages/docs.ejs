@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Documentação — SvenTV API v2', cssFile: 'docs' }) %></head>
+<body>
+<%- include('../partials/navbar', { user: locals.user || null, activePage: 'docs' }) %>
+<%- include('../partials/flash') %>
+
+<div class="docs-page">
+
+  <!-- ── Sidebar ───────────────────────────────────────────── -->
+  <aside class="docs-sidebar">
+    <div class="docs-nav-section">
+      <h4>Introdução</h4>
+      <a href="#introducao" class="docs-nav-link active">Visão Geral</a>
+      <a href="#autenticacao" class="docs-nav-link">Autenticação</a>
+      <a href="#erros" class="docs-nav-link">Erros</a>
+      <a href="#rate-limit" class="docs-nav-link">Rate Limiting</a>
+    </div>
+    <div class="docs-nav-section">
+      <h4>Auth</h4>
+      <a href="#ep-register" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Registrar
+      </a>
+      <a href="#ep-login" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Login
+      </a>
+      <a href="#ep-logout" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Logout
+      </a>
+      <a href="#ep-profile" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Perfil
+      </a>
+      <a href="#ep-profile-update" class="docs-nav-link">
+        <span class="docs-nav-method method-put">PUT</span> Atualizar Perfil
+      </a>
+      <a href="#ep-avatar" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Avatar
+      </a>
+      <a href="#ep-change-password" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Trocar Senha
+      </a>
+      <a href="#ep-regen-token" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Regenerar Token
+      </a>
+    </div>
+    <div class="docs-nav-section">
+      <h4>Canais</h4>
+      <a href="#ep-channels" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Listar Canais
+      </a>
+      <a href="#ep-channels-stats" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Estatísticas
+      </a>
+      <a href="#ep-channels-statuses" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Statuses
+      </a>
+      <a href="#ep-categories" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Categorias
+      </a>
+      <a href="#ep-search" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Buscar Canais
+      </a>
+      <a href="#ep-by-category" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Por Categoria
+      </a>
+      <a href="#ep-channel-id" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Canal por ID
+      </a>
+      <a href="#ep-check-channel" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Verificar Canal
+      </a>
+      <a href="#ep-stream" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Stream URL
+      </a>
+      <a href="#ep-reload-channels" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Recarregar Canais
+      </a>
+    </div>
+    <div class="docs-nav-section">
+      <h4>Admin</h4>
+      <a href="#ep-admin-users" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Listar Usuários
+      </a>
+      <a href="#ep-admin-role" class="docs-nav-link">
+        <span class="docs-nav-method method-put">PUT</span> Alterar Papel
+      </a>
+      <a href="#ep-admin-block" class="docs-nav-link">
+        <span class="docs-nav-method method-put">PUT</span> Bloquear Usuário
+      </a>
+      <a href="#ep-admin-channels" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Canais (Admin)
+      </a>
+      <a href="#ep-admin-reload" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Recarregar M3U
+      </a>
+      <a href="#ep-admin-check" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Verificar Canal
+      </a>
+      <a href="#ep-admin-check-all" class="docs-nav-link">
+        <span class="docs-nav-method method-post">POST</span> Verificar Todos
+      </a>
+    </div>
+    <div class="docs-nav-section">
+      <h4>Sistema</h4>
+      <a href="#ep-health" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> Health Check
+      </a>
+      <a href="#ep-info" class="docs-nav-link">
+        <span class="docs-nav-method method-get">GET</span> API Info
+      </a>
+    </div>
+  </aside>
+
+  <!-- ── Conteúdo ───────────────────────────────────────────── -->
+  <main class="docs-content">
+
+    <div class="docs-intro">
+      <h1>SvenTV API <span class="badge badge-primary">v2</span></h1>
+      <p>API REST para listagem e acesso a canais de streaming M3U8. Autenticação via JWT, rate limiting por IP e token, e respostas em JSON.</p>
+      <div class="badge-row">
+        <span class="badge">REST</span>
+        <span class="badge">JSON</span>
+        <span class="badge badge-primary">JWT Auth</span>
+        <span class="badge">Rate Limit</span>
+      </div>
+    </div>
+
+    <!-- Introdução -->
+    <section class="docs-section" id="introducao">
+      <h2 class="docs-section-title">Visão Geral</h2>
+      <p class="docs-section-desc">
+        Base URL: <code>https://sventv.vercel.app</code><br>
+        Todos os endpoints da API retornam JSON e estão sob o prefixo <code>/api</code>.
+      </p>
+      <div class="info-box info-box-primary">
+        <span class="info-box-icon">ℹ️</span>
+        Endpoints de canais exigem autenticação via API Token no header
+        <code>Authorization: Bearer &lt;seu_api_token&gt;</code>. Rotas de admin exigem sessão de admin autenticada.
+      </div>
+    </section>
+
+    <!-- Autenticação -->
+    <section class="docs-section" id="autenticacao">
+      <h2 class="docs-section-title">Autenticação</h2>
+      <p class="docs-section-desc">
+        A API usa dois tipos de token JWT:
+        <strong>Session Token</strong> (para rotas web, expira em 7 dias) e
+        <strong>API Token</strong> (para endpoints de canais, expira em 365 dias).
+      </p>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>Exemplo de requisição autenticada</span>
+          <button class="code-copy-btn" data-copy>📋 Copiar</button>
+        </div>
+        <pre>curl https://sventv.vercel.app/api/channels \
+  -H <span class="code-string">"Authorization: Bearer stv_xxxxxxxxxxxxxxxx"</span></pre>
+      </div>
+      <p class="docs-section-desc">
+        Obtenha seu API Token após criar uma conta em <a href="/register" class="auth-link">/register</a> ou na página de <a href="/profile" class="auth-link">perfil</a>.
+      </p>
+    </section>
+
+    <!-- Erros -->
+    <section class="docs-section" id="erros">
+      <h2 class="docs-section-title">Erros</h2>
+      <p class="docs-section-desc">Todos os erros seguem o mesmo formato JSON:</p>
+      <div class="code-block">
+        <div class="code-block-header"><span>Formato de erro</span></div>
+        <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">false</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Descrição do erro"</span>,
+  <span class="code-key">"errors"</span>: [ <span class="code-comment">/* detalhe de validação (opcional) */</span> ]
+}</pre>
+      </div>
+      <table class="params-table">
+        <thead><tr><th>Código</th><th>Significado</th></tr></thead>
+        <tbody>
+          <tr><td><span class="status-badge status-2xx">200</span></td><td>Sucesso</td></tr>
+          <tr><td><span class="status-badge status-2xx">201</span></td><td>Recurso criado</td></tr>
+          <tr><td><span class="status-badge status-4xx">400</span></td><td>Requisição inválida</td></tr>
+          <tr><td><span class="status-badge status-4xx">401</span></td><td>Token ausente ou inválido</td></tr>
+          <tr><td><span class="status-badge status-4xx">403</span></td><td>Sem permissão</td></tr>
+          <tr><td><span class="status-badge status-4xx">404</span></td><td>Recurso não encontrado</td></tr>
+          <tr><td><span class="status-badge status-4xx">409</span></td><td>Conflito (ex: e-mail já cadastrado)</td></tr>
+          <tr><td><span class="status-badge status-4xx">422</span></td><td>Erro de validação</td></tr>
+          <tr><td><span class="status-badge status-4xx">429</span></td><td>Rate limit excedido</td></tr>
+          <tr><td><span class="status-badge status-5xx">500</span></td><td>Erro interno do servidor</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Rate Limiting -->
+    <section class="docs-section" id="rate-limit">
+      <h2 class="docs-section-title">Rate Limiting</h2>
+      <table class="params-table">
+        <thead><tr><th>Rota</th><th>Limite</th><th>Janela</th></tr></thead>
+        <tbody>
+          <tr><td>Global</td><td>200 req</td><td>1 minuto</td></tr>
+          <tr><td>POST /api/auth/login</td><td>20 req</td><td>1 minuto</td></tr>
+          <tr><td>POST /api/auth/register</td><td>10 req</td><td>1 minuto</td></tr>
+          <tr><td>GET /api/channels/*</td><td>100 req</td><td>1 minuto</td></tr>
+          <tr><td>GET /api/channels/:id/stream</td><td>50 req</td><td>1 minuto</td></tr>
+        </tbody>
+      </table>
+      <div class="info-box info-box-warning">
+        <span class="info-box-icon">⚠️</span>
+        Ao exceder o limite, a API retorna <code>429 Too Many Requests</code>. O header
+        <code>Retry-After</code> indica quantos segundos aguardar.
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--                  ENDPOINTS AUTH                        -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+
+    <!-- POST /api/auth/register -->
+    <section class="docs-section" id="ep-register">
+      <h2 class="docs-section-title">POST /api/auth/register</h2>
+      <div class="endpoint open">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/register</span>
+          <span class="endpoint-summary">Registrar usuário</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <p class="endpoint-desc">Cria conta e retorna session token + api token.</p>
+          <h4>Body (JSON)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">name</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Nome (3–100 chars)</td></tr>
+              <tr><td><span class="param-name">email</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>E-mail válido</td></tr>
+              <tr><td><span class="param-name">password</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Mín. 8 caracteres</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 201</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Conta criada com sucesso"</span>,
+  <span class="code-key">"sessionToken"</span>: <span class="code-string">"eyJhbGci..."</span>,
+  <span class="code-key">"apiToken"</span>: <span class="code-string">"stv_xxxxxxxxxxxxxxxx"</span>,
+  <span class="code-key">"user"</span>: { <span class="code-key">"id"</span>: <span class="code-string">"..."</span>, <span class="code-key">"name"</span>: <span class="code-string">"..."</span>, <span class="code-key">"email"</span>: <span class="code-string">"..."</span>, <span class="code-key">"plan"</span>: <span class="code-string">"free"</span> }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/auth/login -->
+    <section class="docs-section" id="ep-login">
+      <h2 class="docs-section-title">POST /api/auth/login</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/login</span>
+          <span class="endpoint-summary">Autenticar usuário</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">email</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td></tr>
+              <tr><td><span class="param-name">password</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td></tr>
+            </tbody>
+          </table>
+          <div class="info-box info-box-warning">
+            <span class="info-box-icon">⚠️</span>
+            Após 5 tentativas incorretas, a conta é bloqueada por 15 minutos.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/auth/logout -->
+    <section class="docs-section" id="ep-logout">
+      <h2 class="docs-section-title">POST /api/auth/logout</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/logout</span>
+          <span class="endpoint-summary">Encerrar sessão</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <p class="endpoint-desc">Não há body. Encerra a sessão atual.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/auth/profile -->
+    <section class="docs-section" id="ep-profile">
+      <h2 class="docs-section-title">GET /api/auth/profile</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/auth/profile</span>
+          <span class="endpoint-summary">Buscar perfil do usuário autenticado</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"user"</span>: {
+    <span class="code-key">"id"</span>: <span class="code-string">"..."</span>, <span class="code-key">"name"</span>: <span class="code-string">"..."</span>,
+    <span class="code-key">"email"</span>: <span class="code-string">"..."</span>, <span class="code-key">"plan"</span>: <span class="code-string">"free"</span>,
+    <span class="code-key">"apiToken"</span>: <span class="code-string">"stv_..."</span>, <span class="code-key">"createdAt"</span>: <span class="code-string">"..."</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PUT /api/auth/profile -->
+    <section class="docs-section" id="ep-profile-update">
+      <h2 class="docs-section-title">PUT /api/auth/profile</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-put">PUT</span>
+          <span class="endpoint-path">/api/auth/profile</span>
+          <span class="endpoint-summary">Atualizar dados do perfil</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <h4>Body (JSON)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">name</span></td><td class="param-type">string</td><td><span class="param-optional">não</span></td><td>Novo nome (3–100 chars)</td></tr>
+              <tr><td><span class="param-name">avatar</span></td><td class="param-type">string</td><td><span class="param-optional">não</span></td><td>URL do avatar</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Perfil atualizado com sucesso."</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"user"</span>: { <span class="code-key">"id"</span>: <span class="code-string">"..."</span>, <span class="code-key">"name"</span>: <span class="code-string">"Novo Nome"</span>, <span class="code-key">"email"</span>: <span class="code-string">"..."</span> }
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/auth/avatar -->
+    <section class="docs-section" id="ep-avatar">
+      <h2 class="docs-section-title">POST /api/auth/avatar</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/avatar</span>
+          <span class="endpoint-summary">Upload de avatar (multipart/form-data)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <h4>Body (multipart/form-data)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">avatar</span></td><td class="param-type">file</td><td><span class="param-required">sim</span></td><td>Imagem (máx. 5 MB)</td></tr>
+            </tbody>
+          </table>
+          <div class="info-box info-box-warning">
+            <span class="info-box-icon">⚠️</span>
+            Formatos aceitos: JPEG, PNG, GIF, WebP. Máximo 5 MB.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/auth/change-password -->
+    <section class="docs-section" id="ep-change-password">
+      <h2 class="docs-section-title">POST /api/auth/change-password</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/change-password</span>
+          <span class="endpoint-summary">Alterar senha da conta</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <h4>Body (JSON)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">currentPassword</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Senha atual</td></tr>
+              <tr><td><span class="param-name">newPassword</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Nova senha (mín. 8 chars)</td></tr>
+              <tr><td><span class="param-name">confirmNewPassword</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Confirmação da nova senha</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Senha alterada com sucesso."</span>
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/auth/regenerate-token -->
+    <section class="docs-section" id="ep-regen-token">
+      <h2 class="docs-section-title">POST /api/auth/regenerate-token</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/auth/regenerate-token</span>
+          <span class="endpoint-summary">Revogar e regenerar API token</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;sessionToken&gt;</code>
+          </div>
+          <p class="endpoint-desc">Não há body. Revoga o API token atual e emite um novo.</p>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"API token regenerado com sucesso."</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"apiToken"</span>: <span class="code-string">"stv_xxxxxxxxxxxxxxxx"</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--                 ENDPOINTS CANAIS                       -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+
+    <!-- GET /api/channels -->
+    <section class="docs-section" id="ep-channels">
+      <h2 class="docs-section-title">GET /api/channels</h2>
+      <div class="endpoint open">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels</span>
+          <span class="endpoint-summary">Listar canais com filtros e paginação</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <h4>Query Params</h4>
+          <table class="params-table">
+            <thead><tr><th>Param</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">search</span></td><td class="param-type">string</td><td>—</td><td>Busca por nome</td></tr>
+              <tr><td><span class="param-name">category</span></td><td class="param-type">string</td><td>—</td><td>Filtrar por categoria</td></tr>
+              <tr><td><span class="param-name">page</span></td><td class="param-type">number</td><td>1</td><td>Número da página</td></tr>
+              <tr><td><span class="param-name">limit</span></td><td class="param-type">number</td><td>50</td><td>Itens por página (máx. 200)</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"total"</span>: <span class="code-number">1250</span>,
+  <span class="code-key">"page"</span>: <span class="code-number">1</span>,
+  <span class="code-key">"pages"</span>: <span class="code-number">25</span>,
+  <span class="code-key">"channels"</span>: [
+    {
+      <span class="code-key">"id"</span>: <span class="code-number">0</span>,
+      <span class="code-key">"name"</span>: <span class="code-string">"Globo HD"</span>,
+      <span class="code-key">"url"</span>: <span class="code-string">"https://..."</span>,
+      <span class="code-key">"logo"</span>: <span class="code-string">"https://..."</span>,
+      <span class="code-key">"category"</span>: <span class="code-string">"Canais Abertos"</span>
+    }
+  ]
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/stats -->
+    <section class="docs-section" id="ep-channels-stats">
+      <h2 class="docs-section-title">GET /api/channels/stats</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/stats</span>
+          <span class="endpoint-summary">Estatísticas gerais dos canais</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"totalChannels"</span>: <span class="code-number">3247</span>,
+    <span class="code-key">"categories"</span>: <span class="code-number">23</span>,
+    <span class="code-key">"categoriesBreakdown"</span>: { <span class="code-string">"Abertos"</span>: <span class="code-number">342</span>, <span class="code-string">"Esportes"</span>: <span class="code-number">147</span> },
+    <span class="code-key">"formatsBreakdown"</span>: { <span class="code-string">"HLS"</span>: <span class="code-number">3102</span>, <span class="code-string">"MPEG-TS"</span>: <span class="code-number">145</span> }
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/statuses -->
+    <section class="docs-section" id="ep-channels-statuses">
+      <h2 class="docs-section-title">GET /api/channels/statuses</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/statuses</span>
+          <span class="endpoint-summary">Status de saúde dos canais (admin)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer <code>apiToken</code> + papel <strong>admin</strong>
+          </div>
+          <p class="endpoint-desc">Retorna status de saúde (online/offline/unknown) de todos os canais.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/categories -->
+    <section class="docs-section" id="ep-categories">
+      <h2 class="docs-section-title">GET /api/channels/categories</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/categories</span>
+          <span class="endpoint-summary">Listar categorias disponíveis</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>Requer <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"categories"</span>: [<span class="code-string">"Canais Abertos"</span>, <span class="code-string">"Esportes"</span>, <span class="code-string">"Filmes"</span>, <span class="code-comment">...</span>]
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/search -->
+    <section class="docs-section" id="ep-search">
+      <h2 class="docs-section-title">GET /api/channels/search</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/search?q=termo</span>
+          <span class="endpoint-summary">Buscar canais por nome</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>Requer <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <h4>Query Params</h4>
+          <table class="params-table">
+            <thead><tr><th>Param</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">q</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Termo de busca (case-insensitive)</td></tr>
+            </tbody>
+          </table>
+          <p class="endpoint-desc">Busca em nome, cleanName, categoria e tvgId.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/category/:category -->
+    <section class="docs-section" id="ep-by-category">
+      <h2 class="docs-section-title">GET /api/channels/category/:category</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/category/:category</span>
+          <span class="endpoint-summary">Canais por categoria</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>Requer <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <h4>Path Params</h4>
+          <table class="params-table">
+            <thead><tr><th>Param</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">category</span></td><td class="param-type">string</td><td>Nome da categoria (URL-encoded)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/:id -->
+    <section class="docs-section" id="ep-channel-id">
+      <h2 class="docs-section-title">GET /api/channels/:id</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/:id</span>
+          <span class="endpoint-summary">Buscar canal por ID</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer header <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <h4>Path Params</h4>
+          <table class="params-table">
+            <thead><tr><th>Param</th><th>Tipo</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">id</span></td><td class="param-type">number</td><td>Índice numérico do canal (base 0)</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Canal encontrado"</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"id"</span>: <span class="code-number">42</span>,
+    <span class="code-key">"name"</span>: <span class="code-string">"Globo HD"</span>,
+    <span class="code-key">"url"</span>: <span class="code-string">"https://..."</span>,
+    <span class="code-key">"logo"</span>: <span class="code-string">"https://..."</span>,
+    <span class="code-key">"category"</span>: <span class="code-string">"Canais Abertos"</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/channels/:id/check -->
+    <section class="docs-section" id="ep-check-channel">
+      <h2 class="docs-section-title">POST /api/channels/:id/check</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/channels/:id/check</span>
+          <span class="endpoint-summary">Verificar saúde de um canal (admin)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer <code>apiToken</code> + papel <strong>admin</strong>
+          </div>
+          <p class="endpoint-desc">Verifica se o stream do canal está acessível e retorna <code>ok: true/false</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/channels/:id/stream -->
+    <section class="docs-section" id="ep-stream">
+      <h2 class="docs-section-title">GET /api/channels/:id/stream</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/channels/:id/stream</span>
+          <span class="endpoint-summary">Abrir player com stream do canal</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>Requer <code>Authorization: Bearer &lt;apiToken&gt;</code>
+          </div>
+          <div class="info-box info-box-warning">
+            <span class="info-box-icon">⚠️</span>
+            Plano <strong>Basic ou Premium</strong> necessário para acesso ao player.
+          </div>
+          <p class="endpoint-desc">Retorna página HTML com player HLS.js integrado para o canal.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/channels/reload -->
+    <section class="docs-section" id="ep-reload-channels">
+      <h2 class="docs-section-title">POST /api/channels/reload</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/channels/reload</span>
+          <span class="endpoint-summary">Recarregar canais do arquivo M3U (admin)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer <code>apiToken</code> + papel <strong>admin</strong>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Canais recarregados com sucesso"</span>,
+  <span class="code-key">"data"</span>: { <span class="code-key">"total"</span>: <span class="code-number">3247</span> }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--                 ENDPOINTS ADMIN                        -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+
+    <!-- GET /api/admin/users -->
+    <section class="docs-section" id="ep-admin-users">
+      <h2 class="docs-section-title">GET /api/admin/users</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/admin/users</span>
+          <span class="endpoint-summary">Listar todos os usuários (admin)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <h4>Query Params</h4>
+          <table class="params-table">
+            <thead><tr><th>Param</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">page</span></td><td class="param-type">number</td><td>1</td><td>Página</td></tr>
+              <tr><td><span class="param-name">limit</span></td><td class="param-type">number</td><td>20</td><td>Itens por página (máx. 100)</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"users"</span>: [
+      {
+        <span class="code-key">"id"</span>: <span class="code-string">"..."</span>,
+        <span class="code-key">"name"</span>: <span class="code-string">"Admin"</span>,
+        <span class="code-key">"email"</span>: <span class="code-string">"admin@example.com"</span>,
+        <span class="code-key">"role"</span>: <span class="code-string">"admin"</span>,
+        <span class="code-key">"status"</span>: <span class="code-string">"active"</span>,
+        <span class="code-key">"createdAt"</span>: <span class="code-string">"..."</span>
+      }
+    ],
+    <span class="code-key">"total"</span>: <span class="code-number">15</span>,
+    <span class="code-key">"page"</span>: <span class="code-number">1</span>,
+    <span class="code-key">"limit"</span>: <span class="code-number">20</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PUT /api/admin/users/:userId/role -->
+    <section class="docs-section" id="ep-admin-role">
+      <h2 class="docs-section-title">PUT /api/admin/users/:userId/role</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-put">PUT</span>
+          <span class="endpoint-path">/api/admin/users/:userId/role</span>
+          <span class="endpoint-summary">Alterar papel do usuário</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <h4>Body (JSON)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">role</span></td><td class="param-type">string</td><td><span class="param-required">sim</span></td><td>Código do papel (ex: <code>admin</code>, <code>basic</code>, <code>premium</code>)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PUT /api/admin/users/:userId/block -->
+    <section class="docs-section" id="ep-admin-block">
+      <h2 class="docs-section-title">PUT /api/admin/users/:userId/block</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-put">PUT</span>
+          <span class="endpoint-path">/api/admin/users/:userId/block</span>
+          <span class="endpoint-summary">Bloquear ou desbloquear usuário</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <h4>Body (JSON)</h4>
+          <table class="params-table">
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrig.</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><span class="param-name">blocked</span></td><td class="param-type">boolean</td><td><span class="param-required">sim</span></td><td><code>true</code> para bloquear, <code>false</code> para desbloquear</td></tr>
+              <tr><td><span class="param-name">reason</span></td><td class="param-type">string</td><td><span class="param-optional">não</span></td><td>Motivo do bloqueio</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/admin/channels -->
+    <section class="docs-section" id="ep-admin-channels">
+      <h2 class="docs-section-title">GET /api/admin/channels</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/admin/channels</span>
+          <span class="endpoint-summary">Listar canais com status de saúde (admin)</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"channels"</span>: [
+      {
+        <span class="code-key">"id"</span>: <span class="code-number">0</span>,
+        <span class="code-key">"name"</span>: <span class="code-string">"Globo HD"</span>,
+        <span class="code-key">"logo"</span>: <span class="code-string">"https://..."</span>,
+        <span class="code-key">"category"</span>: <span class="code-string">"Abertos"</span>,
+        <span class="code-key">"format"</span>: <span class="code-string">"HLS"</span>,
+        <span class="code-key">"status"</span>: <span class="code-string">"online"</span>,
+        <span class="code-key">"checkedAt"</span>: <span class="code-string">"2026-07-24T12:00:00.000Z"</span>
+      }
+    ],
+    <span class="code-key">"total"</span>: <span class="code-number">3247</span>,
+    <span class="code-key">"online"</span>: <span class="code-number">2800</span>,
+    <span class="code-key">"offline"</span>: <span class="code-number">300</span>,
+    <span class="code-key">"unknown"</span>: <span class="code-number">147</span>,
+    <span class="code-key">"categories"</span>: <span class="code-number">23</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/admin/channels/reload -->
+    <section class="docs-section" id="ep-admin-reload">
+      <h2 class="docs-section-title">POST /api/admin/channels/reload</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/admin/channels/reload</span>
+          <span class="endpoint-summary">Recarregar canais do arquivo M3U</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"Canais recarregados com sucesso."</span>,
+  <span class="code-key">"data"</span>: { <span class="code-key">"total"</span>: <span class="code-number">3247</span> }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/admin/channels/:channelId/check -->
+    <section class="docs-section" id="ep-admin-check">
+      <h2 class="docs-section-title">POST /api/admin/channels/:channelId/check</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/admin/channels/:channelId/check</span>
+          <span class="endpoint-summary">Verificar saúde de um canal</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <p class="endpoint-desc">Verifica se o stream do canal específico está acessível.</p>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"id"</span>: <span class="code-string">"0"</span>,
+    <span class="code-key">"ok"</span>: <span class="code-bool">true</span>,
+    <span class="code-key">"checkedAt"</span>: <span class="code-string">"2026-07-24T12:00:00.000Z"</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POST /api/admin/channels/check-all -->
+    <section class="docs-section" id="ep-admin-check-all">
+      <h2 class="docs-section-title">POST /api/admin/channels/check-all</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-post">POST</span>
+          <span class="endpoint-path">/api/admin/channels/check-all</span>
+          <span class="endpoint-summary">Verificar saúde de todos os canais</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="info-box info-box-primary">
+            <span class="info-box-icon">🔐</span>
+            Requer sessão de admin autenticada
+          </div>
+          <p class="endpoint-desc">Verifica o stream de todos os canais. Requerimento longo — aguarde.</p>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"data"</span>: {
+    <span class="code-key">"total"</span>: <span class="code-number">3247</span>,
+    <span class="code-key">"online"</span>: <span class="code-number">2800</span>,
+    <span class="code-key">"offline"</span>: <span class="code-number">447</span>
+  }
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--                ENDPOINTS SISTEMA                       -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+
+    <!-- GET /api/health -->
+    <section class="docs-section" id="ep-health">
+      <h2 class="docs-section-title">GET /api/health</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/health</span>
+          <span class="endpoint-summary">Health check do servidor</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <p class="endpoint-desc">Endpoint público para monitoramento. Retorna status, memória, uptime e ambiente.</p>
+          <div class="code-block">
+            <div class="code-block-header"><span>Resposta 200</span></div>
+            <pre>{
+  <span class="code-key">"success"</span>: <span class="code-bool">true</span>,
+  <span class="code-key">"status"</span>: <span class="code-string">"healthy"</span>,
+  <span class="code-key">"message"</span>: <span class="code-string">"SvenTV API está funcionando corretamente"</span>,
+  <span class="code-key">"version"</span>: <span class="code-string">"2.0.0"</span>,
+  <span class="code-key">"uptime"</span>: <span class="code-number">19392</span>,
+  <span class="code-key">"system"</span>: {
+    <span class="code-key">"nodeVersion"</span>: <span class="code-string">"v22.x"</span>,
+    <span class="code-key">"platform"</span>: <span class="code-string">"win32"</span>
+  },
+  <span class="code-key">"environment"</span>: <span class="code-string">"production"</span>
+}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET /api/info -->
+    <section class="docs-section" id="ep-info">
+      <h2 class="docs-section-title">GET /api/info</h2>
+      <div class="endpoint">
+        <div class="endpoint-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="endpoint-method method-get">GET</span>
+          <span class="endpoint-path">/api/info</span>
+          <span class="endpoint-summary">Informações gerais da API</span>
+          <span class="endpoint-toggle">▼</span>
+        </div>
+        <div class="endpoint-body">
+          <p class="endpoint-desc">Retorna versão, descrição e lista de todos os endpoints disponíveis.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<%- include('../partials/footer') %>
+<script>
+// Sidebar scroll highlight
+const sections = document.querySelectorAll('.docs-section[id]');
+const links = document.querySelectorAll('.docs-nav-link');
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const a = document.querySelector('.docs-nav-link[href="#' + e.target.id + '"]');
+      if (a) a.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -60% 0px' });
+sections.forEach(s => obs.observe(s));
+
+// Copy buttons
+document.querySelectorAll('.code-copy-btn[data-copy]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = '✓ Copiado';
+      setTimeout(() => (btn.textContent = '📋 Copiar'), 2000);
+    });
+  });
+});
+</script>
+</body>
+</html>

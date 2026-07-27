@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Criar Conta — SvenTV', cssFile: 'auth' }) %></head>
+<body class="auth-page">
+<%- include('../partials/navbar', { user: null, activePage: 'register' }) %>
+<%- include('../partials/flash') %>
+
+<main class="auth-main">
+  <div class="auth-card">
+    <div class="auth-card-header">
+      <h1 class="auth-title">Criar conta grátis</h1>
+      <p class="auth-subtitle">Obtenha seu API token em menos de 1 minuto</p>
+    </div>
+
+    <form class="auth-form" id="registerForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="name">Nome completo</label>
+        <input
+          type="text" id="name" name="name"
+          class="form-input" placeholder="Seu nome"
+          autocomplete="name" required
+        >
+        <span class="form-error" id="nameError"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">E-mail</label>
+        <input
+          type="email" id="email" name="email"
+          class="form-input" placeholder="seu@email.com"
+          autocomplete="email" required
+        >
+        <span class="form-error" id="emailError"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Senha</label>
+        <div class="input-password-wrap">
+          <input
+            type="password" id="password" name="password"
+            class="form-input" placeholder="Mín. 8 caracteres"
+            autocomplete="new-password" required
+          >
+          <button type="button" class="toggle-password" aria-label="Mostrar senha">
+            <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="password-strength" id="passwordStrength">
+          <div class="password-strength-bar">
+            <div class="password-strength-fill" id="strengthFill"></div>
+          </div>
+          <span class="password-strength-label" id="strengthLabel">Digite uma senha</span>
+        </div>
+        <span class="form-error" id="passwordError"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="confirmPassword">Confirmar senha</label>
+        <div class="input-password-wrap">
+          <input
+            type="password" id="confirmPassword" name="confirmPassword"
+            class="form-input" placeholder="Repita a senha"
+            autocomplete="new-password" required
+          >
+          <button type="button" class="toggle-password" data-target="confirmPassword" aria-label="Mostrar senha">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <span class="form-error" id="confirmPasswordError"></span>
+      </div>
+
+      <div class="form-group form-check">
+        <label class="check-label">
+          <input type="checkbox" id="terms" name="terms" required>
+          <span>Aceito os <a href="#" class="auth-link">termos de uso</a></span>
+        </label>
+        <span class="form-error" id="termsError"></span>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+        <span class="btn-text">Criar conta →</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+
+      <div id="formError" class="form-alert form-alert-error" hidden></div>
+      <div id="formSuccess" class="form-alert form-alert-success" hidden></div>
+    </form>
+
+    <p class="auth-footer-text">
+      Já tem conta? <a href="/login" class="auth-link">Entrar →</a>
+    </p>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>
+<script src="/js/auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Entrar — SvenTV', cssFile: 'auth' }) %></head>
+<body class="auth-page">
+<%- include('../partials/navbar', { user: null, activePage: 'login' }) %>
+<%- include('../partials/flash') %>
+
+<main class="auth-main">
+  <div class="auth-card">
+    <div class="auth-card-header">
+      <h1 class="auth-title">Bem-vindo de volta</h1>
+      <p class="auth-subtitle">Entre com sua conta SvenTV</p>
+    </div>
+
+    <form class="auth-form" id="loginForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="email">E-mail</label>
+        <input
+          type="email" id="email" name="email"
+          class="form-input" placeholder="seu@email.com"
+          autocomplete="email" required
+        >
+        <span class="form-error" id="emailError"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">
+          Senha
+          <a href="#" class="form-label-link">Esqueceu?</a>
+        </label>
+        <div class="input-password-wrap">
+          <input
+            type="password" id="password" name="password"
+            class="form-input" placeholder="••••••••"
+            autocomplete="current-password" required
+          >
+          <button type="button" class="toggle-password" aria-label="Mostrar senha">
+            <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <span class="form-error" id="passwordError"></span>
+      </div>
+
+      <div class="form-group form-check">
+        <label class="check-label">
+          <input type="checkbox" id="remember" name="remember">
+          <span>Manter conectado</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full" id="submitBtn">        
+        <% if (locals.loading) { %>
+          <span class="btn-spinner">Entrando...</span>
+        <% } else { %>
+          <span class="btn-text">Entrar</span>
+        <% } %>
+      </button>
+
+      <div id="formError" class="form-alert form-alert-error" hidden></div>
+    </form>
+
+    <p class="auth-footer-text">
+      Não tem conta? <a href="/register" class="auth-link">Criar conta grátis →</a>
+    </p>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>
+<script src="/js/auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+<% if (locals.flash) { %>
+  <div class="flash flash-<%= flash.type %>">
+    <span class="flash-icon"><%= flash.type === 'error' ? '✕' : '✓' %></span>
+    <%= flash.message %>
+  </div>
+<% } %>

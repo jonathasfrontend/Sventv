@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String    @db.VarChar(80)
+  email         String    @unique @db.VarChar(255)
+  password      String
+  avatar        String    @default("")
+  apiToken      String?   @unique @map("api_token")
+  status        String    @default("active") @db.VarChar(20)
+  role          String    @default("user") @db.VarChar(20)
+  roleId        String?   @map("role_id") @db.Uuid
+  loginAttempts Int       @default(0) @map("login_attempts")
+  lockUntil     DateTime? @map("lock_until") @db.Timestamptz(6)
+  lastLogin     DateTime? @map("last_login") @db.Timestamptz(6)
+  lastLoginIp   String?   @map("last_login_ip") @db.VarChar(64)
+  apiTokenVersion Int     @default(0) @map("api_token_version")
+  apiTokenActive  Boolean @default(true) @map("api_token_active")
+  accountRestricted Boolean @default(false) @map("account_restricted")
+  restrictedReason String? @map("restricted_reason") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  requestUsage  RequestUsage[]
+  userRoles     UserRole[]
+  roleRef       Role? @relation("UserRoleSingle", fields: [roleId], references: [id], onDelete: SetNull)
+
+  @@index([status], map: "users_status_idx")
+  @@index([role], map: "users_role_idx")
+  @@index([roleId], map: "users_role_id_idx")
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(30)
+  name        String   @db.VarChar(80)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  userRoles UserRole[]
+  users     User[] @relation("UserRoleSingle")
+
+  @@map("roles")
+}
+
+model UserRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId], map: "user_role_unique")
+  @@index([roleId], map: "user_roles_role_idx")
+  @@map("user_roles")
+}
+
+model RequestUsage {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  bucketStart  DateTime @map("bucket_start") @db.Timestamptz(6)
+  bucketEnd    DateTime @map("bucket_end") @db.Timestamptz(6)
+  requestCount Int      @default(0) @map("request_count")
+  routeKey     String   @default("api") @map("route_key") @db.VarChar(120)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bucketStart, routeKey], map: "request_usage_unique_bucket")
+  @@index([bucketStart], map: "request_usage_bucket_idx")
+  @@map("request_usage")
+}

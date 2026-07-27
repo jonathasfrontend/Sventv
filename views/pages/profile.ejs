@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Meu Perfil — SvenTV', cssFile: 'profile' }) %></head>
+<body>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'profile' }) %>
+<%- include('../partials/flash') %>
+
+<main class="profile-main">
+  <div class="profile-layout">
+
+    <!-- ── Sidebar ──────────────────────────────────────── -->
+    <aside class="profile-sidebar">
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar" id="profileAvatarDisplay">
+          <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" id="profileAvatarImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
+          <span id="profileAvatarInitial" <%= locals.user?.avatar ? 'hidden' : '' %>><%= locals.user?.name ? locals.user.name.charAt(0).toUpperCase() : 'U' %></span>
+        </div>
+        <div class="profile-avatar-info">
+          <h2 class="profile-name" id="profileNameDisplay"><%= locals.user?.name || 'Usuário' %></h2>
+          <p class="profile-email"><%= locals.user?.email || '' %></p>
+        </div>
+      </div>
+
+      <div class="profile-badges">
+        <span class="badge"><%= (locals.user?.role || 'user') %></span>
+      </div>
+
+      <nav class="profile-nav">
+        <a href="#api-token" class="profile-nav-link active">🔑 API Token</a>
+        <a href="#edit-profile" class="profile-nav-link">✏️ Editar Perfil</a>
+        <a href="#security" class="profile-nav-link">🛡️ Segurança</a>
+        <a href="#danger" class="profile-nav-link profile-nav-danger">⚠️ Zona de Perigo</a>
+      </nav>
+    </aside>
+
+    <!-- ── Conteúdo ──────────────────────────────────────── -->
+    <div class="profile-content">
+
+      <!-- API Token -->
+      <section class="profile-section" id="api-token">
+        <h3 class="profile-section-title">API Token</h3>
+        <p class="profile-section-desc">
+          Use este token no header <code>Authorization: Bearer &lt;token&gt;</code> para autenticar suas requisições.
+        </p>
+        <div class="token-box">
+          <div class="token-display">
+            <code class="token-value" id="tokenValue">••••••••••••••••••••••••••••••••</code>
+            <div class="token-actions">
+              <button class="token-btn" id="toggleTokenBtn" title="Mostrar/Ocultar token">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="token-btn" id="copyTokenBtn" title="Copiar token">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="token-meta">
+            <span class="token-meta-item">Gerado em: <span id="tokenCreatedAt">—</span></span>
+            <span class="token-meta-item">Expira em: <strong>365 dias</strong></span>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="regenTokenBtn">
+          🔄 Regenerar Token
+        </button>
+        <p class="form-hint">⚠️ Regenerar irá invalidar o token atual imediatamente.</p>
+        <div id="tokenAlert" class="form-alert" hidden></div>
+      </section>
+
+      <div class="profile-divider"></div>
+
+      <!-- Editar Perfil -->
+      <section class="profile-section" id="edit-profile">
+        <h3 class="profile-section-title">Editar Perfil</h3>
+        <div class="avatar-card">
+          <div class="avatar-preview" id="avatarPreview">
+            <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" id="avatarPreviewImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
+            <span id="avatarPreviewInitial" <%= locals.user?.avatar ? 'hidden' : '' %>><%= locals.user?.name ? locals.user.name.charAt(0).toUpperCase() : 'U' %></span>
+          </div>
+          <form id="avatarForm" class="avatar-form" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="avatarUrl">URL da imagem</label>
+              <input type="url" id="avatarUrl" name="imageUrl" class="form-input"
+                placeholder="https://exemplo.com/avatar.png">
+            </div>
+            <div class="avatar-divider">ou</div>
+            <div class="form-group">
+              <label class="form-label" for="avatarFile">Upload de imagem</label>
+              <input type="file" id="avatarFile" name="avatar" accept="image/*" class="form-input">
+              <p class="form-hint">Máx. 5MB. Formatos: JPG, PNG, WEBP, GIF ou SVG.</p>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" id="saveAvatarBtn">
+              <span class="btn-text">Atualizar Avatar</span>
+              <span class="btn-spinner" hidden></span>
+            </button>
+            <div id="avatarAlert" class="form-alert" hidden></div>
+          </form>
+        </div>
+        <form id="profileForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="profileName">Nome</label>
+              <input type="text" id="profileName" name="name" class="form-input"
+                value="<%= locals.user?.name || '' %>" placeholder="Seu nome" required>
+              <span class="form-error" id="nameError"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="profileEmail">E-mail <span class="form-hint-inline">(não editável)</span></label>
+              <input type="email" id="profileEmail" class="form-input"
+                value="<%= locals.user?.email || '' %>" disabled>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" id="saveProfileBtn">
+            <span class="btn-text">Salvar Alterações</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+          <div id="profileAlert" class="form-alert" hidden></div>
+        </form>
+      </section>
+
+      <div class="profile-divider"></div>
+
+      <!-- Segurança -->
+      <section class="profile-section" id="security">
+        <h3 class="profile-section-title">Alterar Senha</h3>
+        <form id="passwordForm" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="currentPassword">Senha atual</label>
+            <div class="input-password-wrap">
+              <input type="password" id="currentPassword" name="currentPassword"
+                class="form-input" placeholder="••••••••" required>
+              <button type="button" class="toggle-password" data-target="currentPassword">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <span class="form-error" id="currentPasswordError"></span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="newPassword">Nova senha</label>
+              <div class="input-password-wrap">
+                <input type="password" id="newPassword" name="newPassword"
+                  class="form-input" placeholder="Mín. 8 caracteres" required>
+                <button type="button" class="toggle-password" data-target="newPassword">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <span class="form-error" id="newPasswordError"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="confirmNewPassword">Confirmar nova senha</label>
+              <div class="input-password-wrap">
+                <input type="password" id="confirmNewPassword" name="confirmNewPassword"
+                  class="form-input" placeholder="Repita a senha" required>
+                <button type="button" class="toggle-password" data-target="confirmNewPassword">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <span class="form-error" id="confirmNewPasswordError"></span>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" id="savePasswordBtn">
+            <span class="btn-text">Alterar Senha</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+          <div id="passwordAlert" class="form-alert" hidden></div>
+        </form>
+      </section>
+
+      <div class="profile-divider"></div>
+
+      <!-- Zona de Perigo -->
+      <section class="profile-section danger-zone" id="danger">
+        <h3 class="profile-section-title danger-title">⚠️ Zona de Perigo</h3>
+        <p class="profile-section-desc">Ações irreversíveis. Prossiga com cuidado.</p>
+        <button class="btn btn-danger btn-sm" id="deleteAccountBtn">
+          Excluir Minha Conta
+        </button>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<!-- Dados do usuário para o JS (data island — sem risco de XSS nem erro de linter) -->
+<script type="application/json" id="__USER_DATA__"><%- JSON.stringify({
+  name:     locals.user ? locals.user.name     : null,
+  email:    locals.user ? locals.user.email    : null,
+  role:     locals.user ? locals.user.role     : null,
+  apiToken: locals.user ? locals.user.apiToken : null,
+  avatar:   locals.user ? locals.user.avatar   : null
+}) %></script>
+<%- include('../partials/footer') %>
+<script src="/js/profile.js"></script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+/* ============================================================
+   SvenTV — profile.css
+   Pagina de Perfil do Usuário
+   ============================================================ */
+
+/* ── Layout da página ────────────────────────────────────── */
+.profile-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+  min-height: calc(100vh - 64px);
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: sticky;
+  top: calc(64px + 24px);
+}
+
+/* Avatar + nome + email */
+.profile-avatar-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--primary-glow);
+  border: 3px solid hsla(190, 100%, 50%, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+
+.profile-avatar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.profile-email {
+  font-size: 12px;
+  color: var(--fg-muted);
+  word-break: break-all;
+}
+
+/* Badges de plano e role */
+.profile-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Navegação lateral */
+.profile-nav {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+  transition: all var(--transition);
+  text-decoration: none;
+}
+
+.profile-nav-link:last-child {
+  border-bottom: none;
+}
+
+.profile-nav-link:hover,
+.profile-nav-link.active {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.profile-nav-danger {
+  color: var(--error) !important;
+}
+
+.profile-nav-danger:hover {
+  background: hsla(0, 75%, 55%, 0.08) !important;
+}
+
+/* ── Conteúdo principal ──────────────────────────────────── */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Secao de perfil */
+.profile-section {
+  padding: 28px 0;
+}
+
+.avatar-card {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 16px;
+  align-items: start;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.avatar-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-preview span {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.avatar-form {
+  display: grid;
+  gap: 10px;
+}
+
+.avatar-divider {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.profile-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.profile-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.profile-section-desc {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+/* Seção da zona de perigo */
+.danger-zone {
+  border: 1px solid hsla(0, 75%, 55%, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  background: hsla(0, 75%, 55%, 0.04);
+}
+
+/* Titulo da zona de perigo */
+.danger-title {
+  color: var(--error);
+}
+
+/* ── Caixa do API Token ──────────────────────────────────── */
+.token-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.token-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.token-value {
+  flex: 1;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--primary);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.token-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.token-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.token-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.token-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.token-meta-item {
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+
+/* ── Campo de senha com toggle ───────────────────────────── */
+.input-password-wrap {
+  position: relative;
+}
+
+.input-password-wrap .form-input {
+  padding-right: 44px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 4px;
+  transition: color var(--transition);
+}
+
+.toggle-password:hover {
+  color: var(--fg);
+}
+
+/* ── Responsividade ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  .profile-layout { grid-template-columns: 1fr; }
+  .profile-sidebar { position: static; }
+  .avatar-card { grid-template-columns: 1fr; }
+  .avatar-preview { justify-self: center; }
+}
+
+@media (max-width: 500px) {
+  .form-row     { grid-template-columns: 1fr; }
+  .token-display { flex-direction: column; align-items: flex-start; }
+  .token-actions { width: 100%; justify-content: flex-end; }
+}

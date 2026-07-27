@@ -1,0 +1,410 @@
+/* ============================================================
+   SvenTV — landing.css
+   Pagina Inicial / Apresentacao
+   ============================================================ */
+
+/* ── Container global ────────────────────────────────────── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ── Texto com gradiente ─────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), hsl(230, 80%, 65%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Hero ─────────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 80px 20px;
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  overflow: hidden;
+}
+
+.hero-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.hero-title {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+}
+
+.hero-desc {
+  font-size: 17px;
+  color: var(--fg-muted);
+  line-height: 1.7;
+  margin-bottom: 36px;
+  max-width: 500px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 48px;
+}
+
+/* Estatísticas do hero */
+.hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hero-stat-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--fg);
+}
+
+.hero-stat span:last-child {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.hero-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+/* Visual direito do hero */
+.hero-visual {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-visual-glow {
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(ellipse 60% 60% at 50% 50%, hsla(190, 100%, 50%, 0.08), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Card de preview (terminal) ──────────────────────────── */
+.code-preview {
+  position: relative;
+  z-index: 1;
+  width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow), var(--shadow-glow);
+}
+
+.code-preview-header {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.dot-red    { background: #ff5f57; }
+.dot-yellow { background: #ffbd2e; }
+.dot-green  { background: #28c840; }
+
+.code-preview-title {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-left: 4px;
+  font-family: monospace;
+}
+
+.code-preview-body {
+  padding: 20px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--fg-muted);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Tokens de sintaxe do terminal */
+.cp-comment { color: var(--fg-subtle); font-style: italic; }
+.cp-cmd     { color: var(--primary); font-weight: 600; }
+.cp-url     { color: hsl(40, 90%, 65%); }
+.cp-flag    { color: hsl(270, 70%, 72%); }
+.cp-str     { color: hsl(95, 60%, 65%); }
+.cp-key     { color: hsl(210, 80%, 72%); }
+.cp-bool    { color: hsl(270, 70%, 72%); }
+.cp-num     { color: hsl(30, 90%, 68%); }
+.cp-brace   { color: var(--fg-muted); }
+
+/* ── Seção de Features ───────────────────────────────────── */
+.features {
+  padding: 80px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.section-desc {
+  font-size: 16px;
+  color: var(--fg-muted);
+  max-width: 520px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.feature-card:hover {
+  border-color: hsla(190, 100%, 50%, 0.35);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.feature-icon {
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.feature-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.feature-card p {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.65;
+}
+
+/* ── Seção de Planos ─────────────────────────────────────── */
+.plans {
+  padding: 80px 20px;
+  background: var(--bg-elevated);
+}
+
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.plan-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.plan-card:hover {
+  border-color: hsla(190, 100%, 50%, 0.35);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.plan-card-featured {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), var(--shadow-glow);
+}
+
+.plan-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-badge {
+  background: var(--primary-glow);
+  border: 1px solid hsla(190, 100%, 50%, 0.3);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.plan-card-featured .plan-badge {
+  background: var(--primary);
+  color: hsl(220, 20%, 5%);
+  border-color: var(--primary);
+}
+
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.plan-amount {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.plan-period {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.plan-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  flex: 1;
+}
+
+.plan-features li {
+  font-size: 14px;
+  color: var(--fg);
+}
+
+/* ── Seção CTA ───────────────────────────────────────────── */
+.cta {
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.cta-container {
+  max-width: 700px;
+  margin: 0 auto;
+  background: var(--bg-card);
+  border: 1px solid hsla(190, 100%, 50%, 0.25);
+  border-radius: var(--radius-xl);
+  padding: 60px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cta-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, hsla(190, 100%, 50%, 0.08), transparent);
+  pointer-events: none;
+}
+
+.cta-title {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 14px;
+  letter-spacing: -0.03em;
+  position: relative;
+}
+
+.cta-desc {
+  font-size: 16px;
+  color: var(--fg-muted);
+  margin-bottom: 32px;
+  position: relative;
+}
+
+.cta-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+/* ── Responsividade ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .hero {
+    flex-direction: column;
+    text-align: center;
+    padding: 48px 20px;
+    gap: 40px;
+  }
+
+  .hero-desc    { max-width: 100%; }
+  .hero-actions { justify-content: center; }
+  .hero-stats   { justify-content: center; }
+  .hero-visual  { display: none; }
+  .features     { padding: 60px 20px; }
+  .plans        { padding: 60px 20px; }
+  .cta          { padding: 60px 20px; }
+}
+
+@media (max-width: 600px) {
+  .cta-container { padding: 40px 24px; }
+  .hero-title    { font-size: 2rem; }
+}

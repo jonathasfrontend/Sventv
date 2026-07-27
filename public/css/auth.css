@@ -1,0 +1,152 @@
+/* ============================================================
+   SvenTV — auth.css
+   Login e Registro
+   ============================================================ */
+
+/* ── Layout da página de auth ────────────────────────────── */
+.auth-page {
+  min-height: 100vh;
+}
+
+.auth-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 20px 80px;
+  min-height: calc(100vh - 64px);
+}
+
+/* ── Card central ────────────────────────────────────────── */
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 36px;
+}
+
+.auth-card-header {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.auth-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-bottom: 6px;
+}
+
+.auth-subtitle {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+/* ── Formulário ──────────────────────────────────────────── */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Link de autenticação ────────────────────────────────── */
+.auth-link {
+  color: var(--primary);
+  font-weight: 600;
+  transition: color var(--transition);
+}
+
+.auth-link:hover {
+  color: var(--primary-dark);
+}
+
+/* ── Texto no rodapé do formulário ───────────────────────── */
+.auth-footer-text {
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+/* ── Divisor ─────────────────────────────────────────────── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Campo de senha com botão de toggle ──────────────────── */
+.input-password-wrap {
+  position: relative;
+}
+
+.input-password-wrap .form-input {
+  padding-right: 44px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  transition: color var(--transition);
+}
+
+.toggle-password:hover {
+  color: var(--fg);
+}
+
+/* ── Medidor de força da senha ───────────────────────────── */
+.password-strength {
+  margin-top: 8px;
+}
+
+.password-strength-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.password-strength-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease, background 0.4s ease;
+  width: 0%;
+}
+
+.password-strength-label {
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+/* Niveis de forca */
+.strength-weak   .password-strength-fill { width: 25%; background: var(--error); }
+.strength-fair   .password-strength-fill { width: 50%; background: var(--warning); }
+.strength-good   .password-strength-fill { width: 75%; background: var(--primary); }
+.strength-strong .password-strength-fill { width: 100%; background: var(--success); }
+
+/* ── Responsividade ──────────────────────────────────────── */
+@media (max-width: 500px) {
+  .auth-card  { padding: 28px 20px; }
+  .form-row   { grid-template-columns: 1fr; }
+}

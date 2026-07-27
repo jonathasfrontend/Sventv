@@ -1942,6 +1942,6 @@ Outras abordagens que você pensou
 
 ---
 
-**Desenvolvido com ❤️ por [Team SvenTV](https://github.com/Team-SvenTV)**
+**Desenvolvido com ❤️ por [Jonathas](https://github.com/jonathasfrontend)**
 
 ---

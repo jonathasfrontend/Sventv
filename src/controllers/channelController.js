@@ -413,21 +413,50 @@ class ChannelController {
         return res.status(400).json({ success: false, message: 'Protocolo de stream não suportado' });
       }
 
-      const upstream = await axios.get(targetUrl.toString(), {
+      // Busca na origem com 1 retry para erros de rede transitórios
+      const fetchUpstream = () => axios.get(targetUrl.toString(), {
         responseType: 'stream',
-        timeout: 20000,
+        timeout: 15000,
         maxRedirects: 5,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; SvenTV/2.0)',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+          'Accept': '*/*',
+          'Connection': 'close',
           ...(req.headers.range ? { Range: req.headers.range } : {}),
         },
         validateStatus: () => true,
       });
 
-      if (upstream.status >= 400) {
+      let upstream = null;
+      let netError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          upstream = await fetchUpstream();
+          netError = null;
+          break;
+        } catch (e) {
+          netError = e;
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 300));
+          }
+        }
+      }
+
+      if (!upstream) {
+        console.error(`❌ Proxy [rede] ${targetUrl.host}: code=${netError?.code} msg=${netError?.message}`);
         return res.status(502).json({
           success: false,
-          message: 'Fonte do stream indisponível'
+          message: 'Erro ao encaminhar o stream',
+          detail: netError?.code || 'NETWORK_ERROR'
+        });
+      }
+
+      if (upstream.status >= 400) {
+        console.error(`❌ Proxy [origem] ${targetUrl.host}: HTTP ${upstream.status}`);
+        return res.status(502).json({
+          success: false,
+          message: 'Fonte do stream indisponível',
+          detail: `HTTP ${upstream.status}`
         });
       }
 
@@ -457,11 +486,12 @@ class ChannelController {
 
       upstream.data.pipe(res);
     } catch (error) {
-      console.error('Erro no proxy de stream:', error.message);
+      console.error(`❌ Proxy [exceção] code=${error.code} msg=${error.message}`);
       if (!res.headersSent) {
         res.status(502).json({
           success: false,
-          message: 'Erro ao encaminhar o stream'
+          message: 'Erro ao encaminhar o stream',
+          detail: error.code || 'INTERNAL_ERROR'
         });
       } else {
         res.end();

@@ -253,9 +253,9 @@ class ChannelController {
    * @param {Object} req - Request object
    * @param {Object} res - Response object
    */
-  reloadChannels = (req, res) => {
+  reloadChannels = async (req, res) => {
     try {
-      this.m3uService.reloadChannels();
+      await this.m3uService.reloadChannels();
 
       res.status(200).json({
         success: true,

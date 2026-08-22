@@ -1,71 +1,102 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const axios = require('axios');
 
 /**
  * Serviço responsável pelo processamento do arquivo M3U
  * Extrai informações dos canais de TV e organiza os dados
- * Suporta múltiplos formatos de arquivo M3U
+ * Suporta múltiplos formatos de arquivo M3U (local ou URL externa)
  */
 class M3UService {
   constructor() {
     this.channels = [];
     this.m3uFiles = [
-      
-      // url de arquivo local
-      path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u')
 
-      // urls externas como https://raw.githubusercontent.com/helenfernanda/gratis/main/iptvlegal.m3u
+      // ── Arquivo local (descomente para usar) ──────────────────
+      // path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u'),
+
+      // ── URLs externas (ativas) ────────────────────────────────
+      'https://github.com/jonathasfrontend/Sventv/releases/download/LISTAIPTV/SvenTvChannelsBACKUP.m3u'
+
+      // Outras urls externas, ex:
+      // 'https://raw.githubusercontent.com/helenfernanda/gratis/main/iptvlegal.m3u'
 
 
     ];
-    this.loadChannels();
+    // Carrega os canais de forma assíncrona (suporta download de URLs)
+    this.loadPromise = this.loadChannels();
   }
 
   /**
-   * Carrega e processa os arquivos M3U filtrados
+   * Verifica se a fonte é uma URL externa
+   * @param {string} source - Caminho local ou URL
+   * @returns {boolean}
+   */
+  isExternalUrl(source) {
+    return typeof source === 'string' && /^https?:\/\//i.test(source);
+  }
+
+  /**
+   * Baixa o conteúdo de uma URL externa
+   * @param {string} url - URL do arquivo M3U
+   * @returns {Promise<string>} - Conteúdo baixado
+   */
+  async fetchExternalM3U(url) {
+    const response = await axios.get(url, {
+      timeout: 30000,
+      maxContentLength: 100 * 1024 * 1024, // 100 MB
+      responseType: 'text'
+    });
+    return response.data;
+  }
+
+  /**
+   * Carrega e processa as fontes M3U (locais ou URLs externas)
    * O arquivo já foi processado pelo filtro M3U que mantém apenas canais FHD válidos
    */
-  loadChannels() {
+  async loadChannels() {
     let totalChannels = 0;
     let loadedFiles = 0;
-    
-    // Verifica se o arquivo filtrado existe
-    const filteredFile = path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u');
-    
-    if (!fs.existsSync(filteredFile)) {
-      console.log('🔍 Arquivo filtrado não encontrado.');
-      console.log('💡 Execute: npm run m3u:clean para gerar o arquivo filtrado');
-    }
-    
-    this.m3uFiles.forEach((filePath) => {
+
+    for (const source of this.m3uFiles) {
       try {
-        if (fs.existsSync(filePath)) {
-          const m3uContent = fs.readFileSync(filePath, 'utf-8');
-          const fileName = path.basename(filePath);
-          const channelsBeforeLoad = this.channels.length;
-          
-          this.parseM3U(m3uContent, fileName);
-          
-          const channelsLoaded = this.channels.length - channelsBeforeLoad;
-          totalChannels += channelsLoaded;
-          loadedFiles++;
-          
-          console.log(`✅ ${fileName}: ${channelsLoaded} canais carregados`);
+        let m3uContent;
+        let fileName;
+
+        if (this.isExternalUrl(source)) {
+          console.log(`🌐 Baixando lista externa: ${source}`);
+          m3uContent = await this.fetchExternalM3U(source);
+          fileName = path.basename(new URL(source).pathname) || 'lista-externa.m3u';
+          if (!fileName.toLowerCase().endsWith('.m3u')) fileName += '.m3u';
         } else {
-          console.log(`⚠️  Arquivo não encontrado: ${path.basename(filePath)}`);
-          console.log('💡 Certifique-se de que o arquivo SvenTvChannelsBACKUP.m3u está na raiz do projeto');
+          if (!fs.existsSync(source)) {
+            console.log(`⚠️  Arquivo não encontrado: ${path.basename(source)}`);
+            console.log('💡 Certifique-se de que o arquivo SvenTvChannelsBACKUP.m3u está na raiz do projeto');
+            continue;
+          }
+          m3uContent = fs.readFileSync(source, 'utf-8');
+          fileName = path.basename(source);
         }
+
+        const channelsBeforeLoad = this.channels.length;
+        this.parseM3U(m3uContent, fileName);
+
+        const channelsLoaded = this.channels.length - channelsBeforeLoad;
+        totalChannels += channelsLoaded;
+        loadedFiles++;
+
+        console.log(`✅ ${fileName}: ${channelsLoaded} canais carregados`);
       } catch (error) {
-        console.error(`❌ Erro ao carregar ${path.basename(filePath)}:`, error.message);
+        console.error(`❌ Erro ao carregar ${this.isExternalUrl(source) ? source : path.basename(source)}:`, error.message);
       }
-    });
-    
+    }
+
     console.log(`📺 Total: ${this.channels.length} canais de ${loadedFiles} arquivo(s)`);
-    
+
     // Remove duplicatas baseadas no nome e URL
     this.removeDuplicates();
-    
+
     console.log(`🔄 Após remoção de duplicatas: ${this.channels.length} canais únicos`);
   }
 
@@ -485,11 +516,11 @@ class M3UService {
   }
 
   /**
-   * Recarrega os canais do arquivo M3U
+   * Recarrega os canais das fontes M3U (locais ou externas)
    */
-  reloadChannels() {
+  async reloadChannels() {
     this.channels = [];
-    this.loadChannels();
+    await this.loadChannels();
   }
 }
 

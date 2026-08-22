@@ -186,7 +186,7 @@ const adminController = {
 
   async reloadChannels(req, res, next) {
     try {
-      m3uService.reloadChannels();
+      await m3uService.reloadChannels();
       return res.status(200).json({
         success: true,
         message: 'Canais recarregados com sucesso.',

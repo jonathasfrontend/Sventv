@@ -318,7 +318,7 @@ function loadPlayerFrame(ch) {
   }
 
   // Monta URL do player: /api/channels/:id/stream?token=<apiToken>
-  const streamUrl = `/api/channels/${encodeURIComponent(ch.id)}/stream?token=${encodeURIComponent(apiToken)}`;
+  const streamUrl = buildEmbedUrl(ch);
   playerFrame.src = streamUrl;
   playerError.hidden = true;
 
@@ -346,12 +346,18 @@ retryBtn?.addEventListener('click', () => {
   }
 });
 
+// Monta a URL absoluta do embed do canal (player da API com token)
+function buildEmbedUrl(ch) {
+  if (!ch || !ch.id || !apiToken) return '';
+  return `${window.location.origin}/api/channels/${encodeURIComponent(ch.id)}/stream?token=${encodeURIComponent(apiToken)}`;
+}
+
 copyUrlBtn?.addEventListener('click', () => {
-  const url = _currentChannel?.url || '';
+  const url = buildEmbedUrl(_currentChannel);
   if (!url) return;
   navigator.clipboard.writeText(url).then(() => {
     copyUrlBtn.textContent = '✓ Copiado!';
-    setTimeout(() => (copyUrlBtn.textContent = '📋 Copiar URL'), 2000);
+    setTimeout(() => (copyUrlBtn.textContent = '📋 Copiar Embed'), 2000);
   });
 });
 

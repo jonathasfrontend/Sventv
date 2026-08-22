@@ -20,6 +20,18 @@ const logger = require('../utils/logger');
 const { getUserPlanLimit, incrementAndGetUsage } = require('../services/rateLimitService');
 
 // ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Detecta requisições do proxy de stream (segmentos HLS).
+ * Uma transmissão gera dezenas de requests por minuto — não
+ * podem contar contra as cotas de API globais/por plano.
+ */
+const isProxyStreamPath = (req) =>
+  /^\/api\/channels\/[^/]+\/proxy\/?$/.test(req.path || '');
+
+// ─────────────────────────────────────────────────────────────
 // Handler padrão quando limite é excedido
 // ─────────────────────────────────────────────────────────────
 
@@ -47,6 +59,8 @@ const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: limitHandler,
+  // Segmentos de vídeo do proxy não consomem a cota global
+  skip: (req) => isProxyStreamPath(req),
 });
 
 /**
@@ -98,7 +112,10 @@ const apiLimiter = rateLimit({
     return req.query?.token ? `api_${String(req.query.token).slice(0, 40)}` : `api_${req.ip}`;
   },
   validate: false,
+  // Segmentos de vídeo do proxy não consomem a cota da API
   skip: async (req, res) => {
+    if (isProxyStreamPath(req)) return true;
+
     if (!req.user?.id) return false;
 
     const limit = await getUserPlanLimit(req.user);
@@ -177,10 +194,33 @@ const streamLimiter = rateLimit({
   },
 });
 
+/**
+ * Limitador dedicado ao proxy de stream.
+ * Cota alta: cada minuto de vídeo HLS consome ~30-60 requests
+ * (segmentos + refresh de playlists). Autenticação e anti-hotlink
+ * continuam valendo; este limite existe apenas como freio de abuso.
+ */
+const proxyStreamLimiter = rateLimit({
+  windowMs: 60_000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_PROXY, 10) || 1200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: limitHandler,
+  keyGenerator: (req) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return `proxy_${authHeader.slice(7, 47)}`;
+    }
+    return `proxy_${req.query?.token ? String(req.query.token).slice(0, 40) : req.ip}`;
+  },
+  validate: false,
+});
+
 module.exports = {
   globalLimiter,
   loginLimiter,
   registerLimiter,
   apiLimiter,
   streamLimiter,
+  proxyStreamLimiter,
 };

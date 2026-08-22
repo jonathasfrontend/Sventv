@@ -9,7 +9,8 @@ const path = require('path');
  */
 class ChannelController {
   constructor() {
-    this.m3uService = new M3UService();
+    // Instância única compartilhada (1 download por lambda)
+    this.m3uService = M3UService.getShared();
     
     // Carregar template HTML uma única vez
     try {

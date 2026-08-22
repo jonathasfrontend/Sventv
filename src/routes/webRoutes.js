@@ -4,7 +4,7 @@ const router = express.Router();
 const { resolveUser, requireWebAuth, redirectIfAuthenticated, requireWebRole } = require('../middlewares/webAuth');
 const M3UService = require('../services/m3uService');
 
-const m3uService = new M3UService();
+const m3uService = M3UService.getShared();
 
 // ── Páginas públicas ────────────────────────────────────────
 

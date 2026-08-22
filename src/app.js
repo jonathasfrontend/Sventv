@@ -19,6 +19,7 @@ const session = require('express-session');
 const config = require('./config/app');
 const routes = require('./routes');
 const webRoutes = require('./routes/webRoutes');
+const M3UService = require('./services/m3uService');
 const { ensureDBConnection } = require('./config/database');
 const { errorHandler, notFound, requestLogger } = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
@@ -88,11 +89,28 @@ app.use(
 app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 app.use('/Player', express.static(path.join(__dirname, 'Player')));
 
-// ── Conexão com o banco (lazy — serverless) ──────────────────
-// Na Vercel não há startup único: cada instância fria conecta
-// na primeira requisição; nas seguintes a promise é reutilizada.
+// ── Prontidão (lazy — serverless) ────────────────────────────
+// Na Vercel não há startup único: cada instância fria aguarda
+// conexão com o banco e o download do M3U na primeira requisição.
+// Nas seguintes, as promises resolvidas são reutilizadas (no-op).
+// Páginas HTML não devem ser cacheadas pelo navegador (estado de
+// login sempre refletido no SSR).
+const sharedM3U = M3UService.getShared();
+app.use((req, res, next) => {
+  if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+  next();
+});
 app.use(async (_req, _res, next) => {
-  await ensureDBConnection();
+  try {
+    await Promise.all([
+      ensureDBConnection(),
+      sharedM3U.ensureLoaded().catch((e) => {
+        console.error('Falha ao carregar canais:', e.message);
+      }),
+    ]);
+  } catch (_) { /* segue degradado; handlers tratam */ }
   next();
 });
 

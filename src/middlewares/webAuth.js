@@ -25,8 +25,31 @@ async function resolveUser(req, res, next) {
       return next();
     }
 
-    const decoded = jwt.verify(token, config.jwt.secret);
-    const user = await User.findById(decoded.id);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret);
+    } catch (_) {
+      // Token inválido/expirado — deslogado de verdade
+      req.user = null;
+      return next();
+    }
+
+    // Busca o usuário com 1 retry: falhas transitórias de banco
+    // (cold start serverless / pooler) não devem deslogar ninguém
+    let user = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        user = await User.findById(decoded.id);
+        break;
+      } catch (err) {
+        if (attempt === 0) {
+          logger.warn(`[webAuth.resolveUser] falha transitória ao buscar usuário, repetindo: ${err.message}`);
+          await new Promise((r) => setTimeout(r, 300));
+        } else {
+          logger.error(`[webAuth.resolveUser] ${err.message}`);
+        }
+      }
+    }
 
     if (!user || user.status === 'banned' || user.status === 'inactive') {
       req.user = null;
@@ -36,7 +59,7 @@ async function resolveUser(req, res, next) {
     req.user = user;
     res.locals.user = user;
   } catch (err) {
-    // Token inválido/expirado — trata como não autenticado
+    logger.error(`[webAuth.resolveUser] erro inesperado: ${err.message}`);
     req.user = null;
   }
   return next();

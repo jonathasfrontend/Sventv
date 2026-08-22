@@ -4,7 +4,7 @@ const prisma = require('../prisma/client');
 const M3UService = require('../services/m3uService');
 const ChannelHealthService = require('../services/channelHealthService');
 
-const m3uService = new M3UService();
+const m3uService = M3UService.getShared();
 const healthService = new ChannelHealthService(m3uService);
 
 const adminController = {

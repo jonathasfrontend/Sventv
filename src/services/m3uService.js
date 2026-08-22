@@ -521,7 +521,32 @@ class M3UService {
   async reloadChannels() {
     this.channels = [];
     await this.loadChannels();
+    this.loadPromise = Promise.resolve();
+  }
+
+  /**
+   * Garante que os canais já foram carregados nesta instância.
+   * Em serverless, requests podem chegar antes do fim do download
+   * do M3U (cold start) — chame este método antes de acessar canais.
+   * @returns {Promise<void>}
+   */
+  ensureLoaded() {
+    if (!this.loadPromise || typeof this.loadPromise.then !== 'function') {
+      this.loadPromise = this.loadChannels();
+    }
+    return this.loadPromise;
   }
 }
+
+// ── Singleton compartilhado ──────────────────────────────────
+// Evita múltiplos downloads simultâneos e estados divergentes
+// entre controllers na mesma instância serverless.
+M3UService._shared = null;
+M3UService.getShared = () => {
+  if (!M3UService._shared) {
+    M3UService._shared = new M3UService();
+  }
+  return M3UService._shared;
+};
 
 module.exports = M3UService;

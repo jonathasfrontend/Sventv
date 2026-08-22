@@ -80,6 +80,18 @@ router.get(
 );
 
 /**
+ * @route  GET /api/channels/:id/proxy
+ * @desc   Proxy HTTPS de playlists HLS e segmentos (evita Mixed Content)
+ * @access Privado — requer API token
+ */
+router.get(
+	'/:id/proxy',
+	streamLimiter,
+	antiHotlink,
+	channelController.streamProxy
+);
+
+/**
  * @route  POST /api/channels/reload
  * @desc   Recarrega a lista de canais do arquivo M3U
  * @access Admin apenas

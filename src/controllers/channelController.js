@@ -1,5 +1,6 @@
 const M3UService = require('../services/m3uService');
 const ChannelHealthService = require('../services/channelHealthService');
+const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
@@ -110,7 +111,7 @@ class ChannelController {
       }
 
       // Retorna HTML com player para iframe
-      const playerHtml = this.generatePlayerHTML(channel);
+      const playerHtml = this.generatePlayerHTML(channel, req.apiToken || req.query.token || '');
 
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('X-Frame-Options', 'ALLOWALL');
@@ -312,18 +313,160 @@ class ChannelController {
    * @param {Object} channel - Dados do canal
    * @returns {string} - HTML do player
    */
-  generatePlayerHTML(channel) {
+  generatePlayerHTML(channel, token = '') {
     // Se o template não foi carregado, usa fallback simples
     // if (!this.playerTemplate) {
     //   return this.generateFallbackPlayerHTML(channel);
     // }
 
+    // O player consome o stream via proxy HTTPS da própria API,
+    // evitando Mixed Content quando a origem é apenas HTTP.
+    const proxyUrl = `/api/channels/${encodeURIComponent(channel.id)}/proxy?token=${encodeURIComponent(token)}`;
+
     // Substitui placeholders no template
     return this.playerTemplate
       .replace(/\{\{CHANNEL_NAME\}\}/g, this.escapeHtml(channel.name))
-      .replace(/\{\{CHANNEL_URL\}\}/g, this.escapeHtml(channel.url))
+      .replace(/\{\{CHANNEL_URL\}\}/g, this.escapeHtml(proxyUrl))
       .replace(/\{\{CHANNEL_LOGO\}\}/g, this.escapeHtml(channel.logo || ''))
   }
+
+  /**
+   * Verifica se a URL aponta para uma playlist HLS (.m3u8)
+   * @param {string} url - URL do recurso
+   * @returns {boolean}
+   */
+  _isPlaylistUrl(url) {
+    try {
+      return new URL(url).pathname.toLowerCase().includes('.m3u8');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Reescreve uma playlist HLS para que todos os recursos
+   * (segmentos, variantes e chaves) passem pelo proxy da API.
+   * @param {string} text - Conteúdo da playlist
+   * @param {string} baseUrl - URL absoluta da playlist original
+   * @param {string} channelId - ID do canal
+   * @param {string} token - API token do usuário
+   * @returns {string} - Playlist reescrita
+   */
+  _rewritePlaylist(text, baseUrl, channelId, token) {
+    const proxyBase = `/api/channels/${encodeURIComponent(channelId)}/proxy`;
+
+    const wrap = (raw) => {
+      if (!raw) return raw;
+      try {
+        const abs = new URL(raw.trim(), baseUrl).toString();
+        return `${proxyBase}?token=${encodeURIComponent(token)}&u=${encodeURIComponent(abs)}`;
+      } catch {
+        return raw;
+      }
+    };
+
+    return text
+      .split('\n')
+      .map((line) => {
+        const t = line.trim();
+        if (!t) return line;
+        if (t.startsWith('#')) {
+          // Reescreve atributos URI="..." (EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA, etc.)
+          return line.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${wrap(uri)}"`);
+        }
+        return wrap(line);
+      })
+      .join('\n');
+  }
+
+  /**
+   * Proxy de stream: encaminha playlists HLS e segmentos para o
+   * cliente através da origem HTTPS da API, resolvendo erros de
+   * Mixed Content com fontes HTTP.
+   * @route GET /api/channels/:id/proxy?token=<apiToken> [&u=<urlAbsoluta>]
+   */
+  streamProxy = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const token = req.apiToken || req.query.token || '';
+      const channel = this.m3uService.getChannelById(id);
+
+      if (!channel) {
+        return res.status(404).json({
+          success: false,
+          message: 'Canal não encontrado'
+        });
+      }
+
+      // Alvo: canal principal (?u ausente) ou sub-recurso da playlist (?u=...)
+      const rawTarget = req.query.u ? String(req.query.u) : channel.url;
+
+      let targetUrl;
+      try {
+        targetUrl = new URL(rawTarget);
+      } catch {
+        return res.status(400).json({ success: false, message: 'URL de stream inválida' });
+      }
+
+      if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+        return res.status(400).json({ success: false, message: 'Protocolo de stream não suportado' });
+      }
+
+      const upstream = await axios.get(targetUrl.toString(), {
+        responseType: 'stream',
+        timeout: 20000,
+        maxRedirects: 5,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; SvenTV/2.0)',
+          ...(req.headers.range ? { Range: req.headers.range } : {}),
+        },
+        validateStatus: () => true,
+      });
+
+      if (upstream.status >= 400) {
+        return res.status(502).json({
+          success: false,
+          message: 'Fonte do stream indisponível'
+        });
+      }
+
+      const contentType = (upstream.headers['content-type'] || '').toLowerCase();
+
+      // Playlist → reescreve URIs para voltarem pelo proxy
+      if (this._isPlaylistUrl(targetUrl.toString()) || contentType.includes('mpegurl')) {
+        const chunks = [];
+        for await (const chunk of upstream.data) chunks.push(chunk);
+        const text = Buffer.concat(chunks).toString('utf-8');
+        const rewritten = this._rewritePlaylist(text, targetUrl.toString(), id, token);
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Frame-Options', 'ALLOWALL');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.status(200).send(rewritten);
+      }
+
+      // Segmentos binários (.ts/.m4s/.mp4), chaves AES, etc. → pipe direto
+      res.status(upstream.status);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (upstream.headers['content-type']) res.setHeader('Content-Type', upstream.headers['content-type']);
+      if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
+      if (upstream.headers['accept-ranges']) res.setHeader('Accept-Ranges', upstream.headers['accept-ranges']);
+      if (upstream.headers['content-range']) res.setHeader('Content-Range', upstream.headers['content-range']);
+
+      upstream.data.pipe(res);
+    } catch (error) {
+      console.error('Erro no proxy de stream:', error.message);
+      if (!res.headersSent) {
+        res.status(502).json({
+          success: false,
+          message: 'Erro ao encaminhar o stream'
+        });
+      } else {
+        res.end();
+      }
+    }
+  };
 
   /**
    * Escapa caracteres HTML para prevenir XSS

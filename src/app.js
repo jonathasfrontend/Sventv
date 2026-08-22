@@ -19,6 +19,7 @@ const session = require('express-session');
 const config = require('./config/app');
 const routes = require('./routes');
 const webRoutes = require('./routes/webRoutes');
+const { ensureDBConnection } = require('./config/database');
 const { errorHandler, notFound, requestLogger } = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
 const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = require('./middlewares/security');
@@ -86,6 +87,14 @@ app.use(
 
 app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 app.use('/Player', express.static(path.join(__dirname, 'Player')));
+
+// ── Conexão com o banco (lazy — serverless) ──────────────────
+// Na Vercel não há startup único: cada instância fria conecta
+// na primeira requisição; nas seguintes a promise é reutilizada.
+app.use(async (_req, _res, next) => {
+  await ensureDBConnection();
+  next();
+});
 
 // ── Rotas ────────────────────────────────────────────────────
 

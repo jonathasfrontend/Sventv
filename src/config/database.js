@@ -37,6 +37,40 @@ const connectDB = async () => {
   }
 };
 
+/**
+ * Garante conexão com o Postgres de forma lazy e idempotente.
+ * Usada em serverless (Vercel), onde não há startup único: cada
+ * instância fria conecta na primeira requisição e reutiliza a
+ * conexão nas seguintes. Em caso de falha, permite nova tentativa
+ * na requisição seguinte (sem encerrar o processo).
+ * @returns {Promise<void>}
+ */
+let connectPromise = null;
+
+const ensureDBConnection = () => {
+  if (!connectPromise) {
+    connectPromise = (async () => {
+      try {
+        if (!process.env.DATABASE_URL) {
+          throw new Error('DATABASE_URL não está definida nas variáveis de ambiente.');
+        }
+
+        await prisma.$queryRaw`SELECT 1`;
+        await bootstrapSaasData();
+
+        setDatabaseConnected(true);
+        logger.info('✅ Postgres conectado com sucesso via Prisma.');
+      } catch (error) {
+        setDatabaseConnected(false);
+        logger.error(`❌ Falha ao conectar ao Postgres via Prisma: ${error.message}`);
+        // Reseta para permitir retry na próxima requisição
+        connectPromise = null;
+      }
+    })();
+  }
+  return connectPromise;
+};
+
 // Garante atualização de estado ao encerrar o processo
 process.on('SIGINT', async () => {
   setDatabaseConnected(false);
@@ -49,4 +83,4 @@ const getDbClient = () => {
   return prisma;
 };
 
-module.exports = { connectDB, getDbClient };
+module.exports = { connectDB, ensureDBConnection, getDbClient };

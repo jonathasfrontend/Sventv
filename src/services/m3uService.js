@@ -13,7 +13,7 @@ class M3UService {
     this.m3uFiles = [
       
       // url de arquivo local
-      path.join(__dirname, '../../SvenTvChannels.m3u')
+      path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u')
 
       // urls externas como https://raw.githubusercontent.com/helenfernanda/gratis/main/iptvlegal.m3u
 
@@ -31,7 +31,7 @@ class M3UService {
     let loadedFiles = 0;
     
     // Verifica se o arquivo filtrado existe
-    const filteredFile = path.join(__dirname, '../../SvenTvChannels.m3u');
+    const filteredFile = path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u');
     
     if (!fs.existsSync(filteredFile)) {
       console.log('🔍 Arquivo filtrado não encontrado.');
@@ -54,7 +54,7 @@ class M3UService {
           console.log(`✅ ${fileName}: ${channelsLoaded} canais carregados`);
         } else {
           console.log(`⚠️  Arquivo não encontrado: ${path.basename(filePath)}`);
-          console.log('💡 Certifique-se de que o arquivo SvenTvChannels.m3u está na raiz do projeto');
+          console.log('💡 Certifique-se de que o arquivo SvenTvChannelsBACKUP.m3u está na raiz do projeto');
         }
       } catch (error) {
         console.error(`❌ Erro ao carregar ${path.basename(filePath)}:`, error.message);

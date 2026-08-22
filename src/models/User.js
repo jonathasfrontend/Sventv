@@ -10,7 +10,7 @@
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { Prisma } = require('@prisma/client');
 const config = require('../config/app');
 const { userRepository, normalizeEmail } = require('../repositories/userRepository');
@@ -174,7 +174,7 @@ class User {
     return jwt.sign(
       {
         id: this._id,
-        uuid: uuidv4(),
+        uuid: randomUUID(),
         type: 'api',
         tv: this.apiTokenVersion || 0,
       },

@@ -140,7 +140,6 @@ function renderChannels() {
           <div class="ch-cell">
             <div>
               <div class="ch-name">${escapeHtml(ch.name)}</div>
-              <div class="ch-url" title="${escapeHtml(ch.url)}">${escapeHtml(ch.url)}</div>
             </div>
           </div>
         </td>

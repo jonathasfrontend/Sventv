@@ -6,6 +6,8 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
+channel-tests/
+
 M3U/
 *.m3u
 *.m3u8

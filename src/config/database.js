@@ -71,13 +71,21 @@ const ensureDBConnection = () => {
   return connectPromise;
 };
 
-// Garante atualização de estado ao encerrar o processo
-process.on('SIGINT', async () => {
+// Encerramento gracioso: libera as sessões do pooler imediatamente,
+// evitando acúmulo de conexões órfãs entre reinícios (nodemon/redeploy)
+const gracefulDbShutdown = async (signal) => {
   setDatabaseConnected(false);
-  await prisma.$disconnect();
-  logger.info('Banco de dados marcado como desconectado pelo encerramento da aplicação.');
+  try {
+    await prisma.$disconnect();
+    logger.info(`🔌 Banco desconectado graciosamente (${signal}).`);
+  } catch {
+    // ignora falhas no disconnect durante shutdown
+  }
   process.exit(0);
-});
+};
+
+process.on('SIGINT', () => gracefulDbShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulDbShutdown('SIGTERM'));
 
 const getDbClient = () => {
   return prisma;

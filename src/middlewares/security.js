@@ -14,6 +14,12 @@
 const logger = require('../utils/logger');
 const config = require('../config/app');
 
+// Rotas de stream/proxy recebem URLs completas via query (?u=...) e não
+// as refletem na resposta sem re-encodar; sanitizar esses valores corrompe
+// a URL (ex.: "/" vira "&#x2F;" e new URL() interpreta host="&").
+const STREAM_PATH_RE = /^\/api\/channels\/[^/]+\/(?:proxy|stream)(?:\/|$)/;
+const isStreamPath = (req) => STREAM_PATH_RE.test(req.path || '');
+
 // ─────────────────────────────────────────────────────────────
 // Payload Injection Prevention
 // ─────────────────────────────────────────────────────────────
@@ -47,6 +53,7 @@ const sanitizeObjectKeys = (input, req) => {
 };
 
 const sanitizeMongo = (req, _res, next) => {
+  if (isStreamPath(req)) return next();
   if (req.body) req.body = sanitizeObjectKeys(req.body, req);
   if (req.query) req.query = sanitizeObjectKeys(req.query, req);
   if (req.params) req.params = sanitizeObjectKeys(req.params, req);
@@ -89,6 +96,7 @@ const escapeHtml = (value) => {
  * Middleware XSS: sanitiza req.body e req.query.
  */
 const sanitizeXss = (req, _res, next) => {
+  if (isStreamPath(req)) return next();
   if (req.body) req.body = escapeHtml(req.body);
   if (req.query) req.query = escapeHtml(req.query);
   next();

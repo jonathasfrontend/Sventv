@@ -1,6 +1,10 @@
 const M3UService = require('../services/m3uService');
 const ChannelHealthService = require('../services/channelHealthService');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +15,19 @@ class ChannelController {
   constructor() {
     // Instância única compartilhada (1 download por lambda)
     this.m3uService = M3UService.getShared();
+
+    // Agentes do proxy: quando o host já é um IP literal, pula a
+    // resolução DNS — resolvers em ambientes serverless podem falhar
+    // com ENOTFOUND mesmo para IPs puros.
+    const smartLookup = (hostname, options, callback) => {
+      const family = net.isIP(hostname);
+      if (family) {
+        return process.nextTick(() => callback(null, hostname, family));
+      }
+      return dns.lookup(hostname, options, callback);
+    };
+    this._proxyHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 100, lookup: smartLookup });
+    this._proxyHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100, lookup: smartLookup });
     
     // Carregar template HTML uma única vez
     try {
@@ -418,10 +435,11 @@ class ChannelController {
         responseType: 'stream',
         timeout: 15000,
         maxRedirects: 5,
+        httpAgent: this._proxyHttpAgent,
+        httpsAgent: this._proxyHttpsAgent,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
           'Accept': '*/*',
-          'Connection': 'close',
           ...(req.headers.range ? { Range: req.headers.range } : {}),
         },
         validateStatus: () => true,

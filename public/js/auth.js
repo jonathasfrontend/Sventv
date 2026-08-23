@@ -4,11 +4,15 @@
 // ── Utilitários ─────────────────────────────────────────────
 
 function saveSession(data) {
-  localStorage.setItem('sessionToken', data.sessionToken);
-  localStorage.setItem('apiToken', data.apiToken);
-  localStorage.setItem('user', JSON.stringify(data.user));
-  // Cookie httpOnly é definido pelo servidor; aqui apenas sessionToken client-side para webAuth
-  document.cookie = `sessionToken=${data.sessionToken}; path=/; max-age=${7 * 24 * 3600}; SameSite=Lax`;
+  // Sessão web vive APENAS no cookie httpOnly definido pelo servidor.
+  // Nada de sessionToken em localStorage nem em cookie acessível ao JS.
+  if (data.apiToken) localStorage.setItem('apiToken', data.apiToken);
+  if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+
+  // Higiene: remove resquícios de versões antigas (token em localStorage
+  // e cookie duplicado não-httpOnly). O httpOnly do servidor é intocado.
+  localStorage.removeItem('sessionToken');
+  document.cookie = 'sessionToken=; path=/; max-age=0; SameSite=Lax';
 }
 
 function setLoading(btn, loading) {

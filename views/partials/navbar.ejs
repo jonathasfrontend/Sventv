@@ -72,14 +72,11 @@
     document.getElementById('navMobile')?.classList.toggle('open');
   });
 
-  // Logout
+  // Logout — cookie httpOnly autentica a chamada; o servidor revoga
+  // todas as sessões (bump de sessionVersion).
   async function doLogout() {
-    const token = localStorage.getItem('sessionToken');
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch(_) {}
     localStorage.removeItem('sessionToken');
     localStorage.removeItem('apiToken');

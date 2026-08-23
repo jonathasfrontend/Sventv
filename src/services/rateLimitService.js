@@ -49,11 +49,34 @@ const incrementAndGetUsage = async ({ userId, routeKey = 'api' }) => {
     },
   });
 
+  maybeCleanupOldBuckets();
+
   return {
     count: usage.requestCount,
     bucketEnd,
   };
 };
+
+// ─────────────────────────────────────────────────────────────
+// Cleanup: evita crescimento indefinido da tabela RequestUsage.
+// Roda probabilisticamente (barato) e remove buckets já expirados
+// há mais de 10 minutos — nenhum dado útil depois disso.
+// ─────────────────────────────────────────────────────────────
+
+const CLEANUP_PROBABILITY = 0.02; // ~2% das chamadas
+const CLEANUP_MAX_AGE_MS = 10 * 60 * 1000;
+
+function maybeCleanupOldBuckets() {
+  if (Math.random() >= CLEANUP_PROBABILITY) return;
+
+  prisma.requestUsage
+    .deleteMany({
+      where: { bucketStart: { lt: new Date(Date.now() - CLEANUP_MAX_AGE_MS) } },
+    })
+    .catch(() => {
+      /* falha de cleanup não pode afetar a request atual */
+    });
+}
 
 module.exports = {
   getUserPlanLimit,

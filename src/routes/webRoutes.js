@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { resolveUser, requireWebAuth, redirectIfAuthenticated, requireWebRole } = require('../middlewares/webAuth');
 const M3UService = require('../services/m3uService');
+const { toPublicChannels } = require('../utils/publicChannel');
 
 const m3uService = M3UService.getShared();
 
@@ -11,7 +12,7 @@ const m3uService = M3UService.getShared();
 // Landing page
 router.get('/', resolveUser, (req, res) => {
   res.render('pages/index', {
-    title: 'SvenTV — API de Streaming M3U8',
+    title: 'SvenTV',
     user: req.user || null,
   });
 });
@@ -19,7 +20,7 @@ router.get('/', resolveUser, (req, res) => {
 // Documentação
 router.get('/docs', resolveUser, (req, res) => {
   res.render('pages/docs', {
-    title: 'Documentação — SvenTV API v2',
+    title: 'Documentação — SvenTV',
     user: req.user || null,
   });
 });
@@ -30,7 +31,7 @@ router.get('/login', redirectIfAuthenticated, (req, res) => {
   const flash = req.session?.flash || null;
   if (req.session) req.session.flash = null;
   res.render('pages/login', {
-    title: 'Entrar — SvenTV',
+    title: 'Login — SvenTV',
     user: null,
     flash,
     returnTo: req.query.returnTo || '/dashboard',
@@ -41,7 +42,7 @@ router.get('/register', redirectIfAuthenticated, (req, res) => {
   const flash = req.session?.flash || null;
   if (req.session) req.session.flash = null;
   res.render('pages/register', {
-    title: 'Criar Conta — SvenTV',
+    title: 'Registrar — SvenTV',
     user: null,
     flash,
   });
@@ -50,7 +51,8 @@ router.get('/register', redirectIfAuthenticated, (req, res) => {
 // ── Páginas protegidas ──────────────────────────────────────
 
 router.get('/dashboard', requireWebAuth, (req, res) => {
-  // Busca canais e categorias via SSR — elimina dependência de fetch com token no carregamento inicial
+  // Busca canais e categorias via SSR — elimina dependência de fetch com token no carregamento inicial.
+  // Canais são sanitizados (sem url/source): o HTML nunca carrega a origem real dos streams.
   let channels = [];
   let categories = [];
   let totalChannels = 0;
@@ -59,7 +61,7 @@ router.get('/dashboard', requireWebAuth, (req, res) => {
     const PAGE_SIZE = 24;
     const allChannels = m3uService.getAllChannels();
     totalChannels = allChannels.length;
-    channels = allChannels.slice(0, PAGE_SIZE);
+    channels = toPublicChannels(allChannels.slice(0, PAGE_SIZE));
     const catSet = new Set(allChannels.map(ch => ch.category).filter(Boolean));
     categories = [...catSet].sort();
   } catch (_) {
@@ -84,7 +86,7 @@ router.get('/profile', requireWebAuth, (req, res) => {
 
 router.get('/admin', requireWebRole('admin'), (req, res) => {
   res.render('pages/admin', {
-    title: 'Painel Administrativo — SvenTV',
+    title: 'Painel — SvenTV',
     user: req.user,
   });
 });

@@ -1,5 +1,7 @@
 # 📺 SvenTV API - Sistema de Streaming de Canais de TV
 
+> ⚠️ **DOCUMENTAÇÃO DESATUALIZADA (v1).** Este README descreve a API antes do endurecimento de segurança e NÃO reflete o comportamento atual. Diferenças principais: autenticação obrigatória em todas as rotas de canal, rate limiting por contexto, proxy HLS selado (sem parâmetro `?u=`), playback tokens de curta duração e sanitização de canais em respostas públicas. A fonte da verdade é o código (`src/`) e o `AGENTS.md`.
+
 [![Node.js](https://img.shields.io/badge/Node.js-18.x+-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-4.18+-000000?style=flat&logo=express&logoColor=white)](https://expressjs.com/)
 [![License](https://img.shields.io/badge/License-JEPSL-blue.svg)](./LICENSE)

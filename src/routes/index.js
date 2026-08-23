@@ -11,30 +11,14 @@ const router = express.Router();
  * Rotas principais da API
  */
 
-// Rota de saúde da API
+// Rota de saúde da API — mínima de propósito:
+// sem versão do Node, pid, memória ou plataforma (fingerprinting).
 router.get('/health', (req, res) => {
-  const memoryUsage = process.memoryUsage();
-  
   res.status(200).json({
     success: true,
     status: 'healthy',
     message: 'SvenTV API está funcionando corretamente',
-    version: '1.0.0',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    system: {
-      nodeVersion: process.version,
-      platform: process.platform,
-      arch: process.arch,
-      pid: process.pid
-    },
-    memory: {
-      used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100, // MB
-      total: Math.round(memoryUsage.heapTotal / 1024 / 1024 * 100) / 100, // MB
-      external: Math.round(memoryUsage.external / 1024 / 1024 * 100) / 100, // MB
-      rss: Math.round(memoryUsage.rss / 1024 / 1024 * 100) / 100 // MB
-    },
-    environment: process.env.NODE_ENV || 'development'
   });
 });
 

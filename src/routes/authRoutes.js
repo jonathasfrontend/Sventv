@@ -65,6 +65,15 @@ router.post('/logout', requireSessionAuth, authController.logout);
 router.get('/profile', requireSessionAuth, authController.getProfile);
 
 /**
+ * @route  GET /auth/api-token
+ * @desc   Retorna APENAS o API token do usuário autenticado.
+ *         Usado pela página de perfil sob demanda (clique em "Mostrar"),
+ *         evitando injetar o token no HTML renderizado.
+ * @access Privado
+ */
+router.get('/api-token', requireSessionAuth, authController.revealApiToken);
+
+/**
  * @route  PUT /auth/profile
  * @desc   Atualiza nome e/ou avatar
  * @access Privado

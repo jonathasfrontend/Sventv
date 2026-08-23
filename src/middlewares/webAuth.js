@@ -56,6 +56,15 @@ async function resolveUser(req, res, next) {
       return next();
     }
 
+    // Revogação server-side: sessões antigas (sv defasado) viram anônimas
+    if (
+      typeof decoded.sv === 'number' &&
+      decoded.sv !== (user.sessionVersion || 0)
+    ) {
+      req.user = null;
+      return next();
+    }
+
     req.user = user;
     res.locals.user = user;
   } catch (err) {

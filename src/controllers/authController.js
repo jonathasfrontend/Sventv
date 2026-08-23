@@ -123,6 +123,30 @@ const authController = {
   },
 
   /**
+   * GET /auth/api-token
+   * Retorna APENAS o API token do usuário autenticado.
+   * Endpoint dedicado para a página de perfil buscar o token sob demanda
+   * (clique em "Mostrar"), sem precisar injetá-lo no HTML renderizado.
+   * Requer: requireSessionAuth
+   */
+  async revealApiToken(req, res, next) {
+    try {
+      const result = await authService.getProfile(req.user._id);
+
+      return res.status(200).json({
+        success: true,
+        message: 'API token recuperado com sucesso.',
+        data: { apiToken: result.apiToken },
+      });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, message: err.message });
+      }
+      next(err);
+    }
+  },
+
+  /**
    * PUT /auth/profile
    * Atualiza nome e/ou avatar do usuário autenticado.
    * Requer: requireSessionAuth
@@ -179,11 +203,16 @@ const authController = {
    */
   async changePassword(req, res, next) {
     try {
-      await authService.changePassword(req.user._id, req.body);
+      const result = await authService.changePassword(req.user._id, req.body);
+
+      // Reemite o cookie com a nova sessão (as antigas foram revogadas)
+      if (result?.sessionToken) {
+        setSessionCookie(res, result.sessionToken);
+      }
 
       return res.status(200).json({
         success: true,
-        message: 'Senha alterada com sucesso.',
+        message: 'Senha alterada com sucesso. As demais sessões ativas foram encerradas.',
       });
     } catch (err) {
       if (err.statusCode) {
@@ -219,16 +248,27 @@ const authController = {
 
   /**
    * POST /auth/logout
-   * Encerra a sessão (client-side apenas, invalida o conceito de sessão).
-   * Para invalidação server-side completa, use uma blacklist de tokens.
+   * Revoga TODAS as sessões do usuário (bump de sessionVersion) e limpa o
+   * cookie. Tokens de sessão emitidos antes deixam de ser aceitos.
    */
-  async logout(req, res) {
-    logger.info(`👋 Logout: ${req.user?.email || 'desconhecido'}`);
-    res.clearCookie('sessionToken', { path: '/' });
-    return res.status(200).json({
-      success: true,
-      message: 'Logout realizado com sucesso. Descarte o token no cliente.',
-    });
+  async logout(req, res, next) {
+    try {
+      if (req.user?._id) {
+        await authService.logout(req.user._id);
+      }
+
+      logger.info(`👋 Logout: ${req.user?.email || 'desconhecido'}`);
+      res.clearCookie('sessionToken', { path: '/' });
+      return res.status(200).json({
+        success: true,
+        message: 'Logout realizado com sucesso.',
+      });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ success: false, message: err.message });
+      }
+      next(err);
+    }
   },
 };
 

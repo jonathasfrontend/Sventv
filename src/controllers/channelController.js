@@ -1,5 +1,7 @@
 const M3UService = require('../services/m3uService');
 const ChannelHealthService = require('../services/channelHealthService');
+const { issuePlaybackToken, openSealedTarget, sealTarget } = require('../services/streamTokenService');
+const { toPublicChannel, toPublicChannels } = require('../utils/publicChannel');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -56,14 +58,34 @@ class ChannelController {
    */
   getAllChannels = (req, res) => {
     try {
-      const channels = this.m3uService.getAllChannels();
+      const all = this.m3uService.getAllChannels();
+
+      // Paginação opcional (?page=&limit=). Sem parâmetros devolve a
+      // lista completa — comportamento retrocompatível com clientes atuais.
+      let channels = all;
+      let pagination;
+      if (req.query.page !== undefined || req.query.limit !== undefined) {
+        const limitRaw = parseInt(req.query.limit, 10);
+        const pageRaw = parseInt(req.query.page, 10);
+        const limit = Math.min(Math.max(Number.isNaN(limitRaw) ? 50 : limitRaw, 1), 500);
+        const page = Math.max(Number.isNaN(pageRaw) ? 1 : pageRaw, 1);
+        const start = (page - 1) * limit;
+        channels = all.slice(start, start + limit);
+        pagination = {
+          page,
+          limit,
+          total: all.length,
+          totalPages: Math.max(Math.ceil(all.length / limit), 1),
+        };
+      }
 
       res.status(200).json({
         success: true,
         message: 'Canais carregados com sucesso',
         data: {
           total: channels.length,
-          channels: channels
+          ...(pagination ? { pagination } : {}),
+          channels: toPublicChannels(channels)
         },
         timestamp: new Date().toISOString()
       });
@@ -98,7 +120,7 @@ class ChannelController {
       res.status(200).json({
         success: true,
         message: 'Canal encontrado',
-        data: channel,
+        data: toPublicChannel(channel),
         timestamp: new Date().toISOString()
       });
     } catch (error) {
@@ -129,15 +151,59 @@ class ChannelController {
       }
 
       // Retorna HTML com player para iframe
-      const playerHtml = this.generatePlayerHTML(channel, req.apiToken || req.query.token || '');
+      const playerHtml = this.generatePlayerHTML(channel, req.authToken || req.apiToken || req.query.token || '');
 
       res.setHeader('Content-Type', 'text/html');
-      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       res.status(200).send(playerHtml);
     } catch (error) {
       console.error('Erro ao gerar stream:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: error.message
+      });
+    }
+  };
+
+  /**
+   * Emite um playback token de curta duração vinculado a um único canal.
+   *
+   * O cliente autentica com o API token permanente, recebe um JWT curto
+   * (default 2h) válido apenas para este canal e usa esse token no player
+   * (iframe /stream e proxy). O API token permanente nunca precisa chegar
+   * ao navegador do player.
+   *
+   * @route POST /api/channels/:id/playback
+   */
+  requestPlayback = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const channel = this.m3uService.getChannelById(id);
+
+      if (!channel) {
+        return res.status(404).json({
+          success: false,
+          message: 'Canal não encontrado'
+        });
+      }
+
+      const { playbackToken, expiresIn } = issuePlaybackToken(req.user, id);
+
+      res.status(200).json({
+        success: true,
+        message: 'Playback token emitido com sucesso',
+        data: {
+          playbackToken,
+          channelId: id,
+          expiresIn
+        },
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Erro ao emitir playback token:', error);
       res.status(500).json({
         success: false,
         message: 'Erro interno do servidor',
@@ -162,7 +228,7 @@ class ChannelController {
         data: {
           category: category,
           total: channels.length,
-          channels: channels
+          channels: toPublicChannels(channels)
         },
         timestamp: new Date().toISOString()
       });
@@ -200,7 +266,7 @@ class ChannelController {
         data: {
           searchTerm: q,
           total: channels.length,
-          channels: channels
+          channels: toPublicChannels(channels)
         },
         timestamp: new Date().toISOString()
       });
@@ -332,11 +398,6 @@ class ChannelController {
    * @returns {string} - HTML do player
    */
   generatePlayerHTML(channel, token = '') {
-    // Se o template não foi carregado, usa fallback simples
-    // if (!this.playerTemplate) {
-    //   return this.generateFallbackPlayerHTML(channel);
-    // }
-
     // O player consome o stream via proxy HTTPS da própria API,
     // evitando Mixed Content quando a origem é apenas HTTP.
     const proxyUrl = `/api/channels/${encodeURIComponent(channel.id)}/proxy?token=${encodeURIComponent(token)}`;
@@ -364,10 +425,16 @@ class ChannelController {
   /**
    * Reescreve uma playlist HLS para que todos os recursos
    * (segmentos, variantes e chaves) passem pelo proxy da API.
+   *
+   * Cada sub-recurso é referenciado por um parâmetro opaco `?p=` (blob
+   * AES-256-GCM contendo canal + URL upstream). O navegador jamais vê a
+   * URL real da origem — eliminando o vazamento de IPs no M3U8 entregue
+   * ao cliente.
+   *
    * @param {string} text - Conteúdo da playlist
    * @param {string} baseUrl - URL absoluta da playlist original
    * @param {string} channelId - ID do canal
-   * @param {string} token - API token do usuário
+   * @param {string} token - Token de autenticação efetivo (API ou playback)
    * @returns {string} - Playlist reescrita
    */
   _rewritePlaylist(text, baseUrl, channelId, token) {
@@ -377,7 +444,8 @@ class ChannelController {
       if (!raw) return raw;
       try {
         const abs = new URL(raw.trim(), baseUrl).toString();
-        return `${proxyBase}?token=${encodeURIComponent(token)}&u=${encodeURIComponent(abs)}`;
+        const sealed = sealTarget(abs, channelId);
+        return `${proxyBase}?token=${encodeURIComponent(token)}&p=${sealed}`;
       } catch {
         return raw;
       }
@@ -401,12 +469,18 @@ class ChannelController {
    * Proxy de stream: encaminha playlists HLS e segmentos para o
    * cliente através da origem HTTPS da API, resolvendo erros de
    * Mixed Content com fontes HTTP.
-   * @route GET /api/channels/:id/proxy?token=<apiToken> [&u=<urlAbsoluta>]
+   *
+   * O alvo é sempre resolvido server-side: ou é a URL do canal
+   * (requisição inicial), ou um blob selado `?p=` emitido pelo próprio
+   * proxy (sub-recursos). O parâmetro legado `?u=<url>` foi removido —
+   * ele permitia SSRF e vazava a origem real.
+   *
+   * @route GET /api/channels/:id/proxy?token=<token> [&p=<blobSelado>]
    */
   streamProxy = async (req, res) => {
     try {
       const { id } = req.params;
-      const token = req.apiToken || req.query.token || '';
+      const token = req.authToken || req.apiToken || req.query.token || '';
       const channel = this.m3uService.getChannelById(id);
 
       if (!channel) {
@@ -416,8 +490,32 @@ class ChannelController {
         });
       }
 
-      // Alvo: canal principal (?u ausente) ou sub-recurso da playlist (?u=...)
-      const rawTarget = req.query.u ? String(req.query.u) : channel.url;
+      // Alvo: canal principal (sem ?p) ou sub-recurso selado (?p=...)
+      let rawTarget;
+
+      // Parâmetro legado ?u=<url> foi removido por segurança: rejeita
+      // explicitamente para deixar o contrato claro (era vetor de SSRF).
+      if (req.query.u) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parâmetro "u" não é mais suportado. Sub-recursos usam blobs selados emitidos pelo próprio proxy.'
+        });
+      }
+
+      if (req.query.p) {
+        const opened = openSealedTarget(String(req.query.p));
+
+        if (!opened || opened.channelId !== id) {
+          return res.status(403).json({
+            success: false,
+            message: 'Sub-recurso de stream inválido para este canal'
+          });
+        }
+
+        rawTarget = opened.url;
+      } else {
+        rawTarget = channel.url;
+      }
 
       let targetUrl;
       try {
@@ -489,7 +587,7 @@ class ChannelController {
 
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
         res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('X-Frame-Options', 'ALLOWALL');
+        res.setHeader('Content-Security-Policy', "frame-ancestors *");
         res.setHeader('Access-Control-Allow-Origin', '*');
         return res.status(200).send(rewritten);
       }
@@ -536,251 +634,6 @@ class ChannelController {
     return text.replace(/[&<>"']/g, m => map[m]);
   }
 
-  /**
-   * Gera player simples como fallback (player antigo)
-   * @param {Object} channel - Dados do canal
-   * @returns {string} - HTML do player
-   */
-  generateFallbackPlayerHTML(channel) {
-    return `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${channel.name} - SvenTV</title>
-          <style>
-              * {
-                  margin: 0;
-                  padding: 0;
-                  box-sizing: border-box;
-              }
-              
-              body {
-                  background: #000;
-                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                  overflow: hidden;
-              }
-              
-              .player-container {
-                  position: relative;
-                  width: 100vw;
-                  height: 100vh;
-                  background: #000;
-              }
-              
-              .video-player {
-                  width: 100%;
-                  height: 100%;
-                  object-fit: contain;
-              }
-              
-              .channel-info {
-                  position: absolute;
-                  top: 10px;
-                  left: 10px;
-                  background: rgba(0, 0, 0, 0.7);
-                  color: white;
-                  padding: 8px 12px;
-                  border-radius: 4px;
-                  font-size: 14px;
-                  z-index: 100;
-                  opacity: 1;
-                  transition: opacity 0.3s ease;
-              }
-              
-              .channel-info.hidden {
-                  opacity: 0;
-              }
-              
-              .loading {
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  color: white;
-                  font-size: 18px;
-                  z-index: 200;
-              }
-              
-              .error-message {
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  color: #ff4444;
-                  text-align: center;
-                  z-index: 300;
-              }
-              
-              @keyframes spin {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-              }
-              
-              .spinner {
-                  width: 40px;
-                  height: 40px;
-                  border: 4px solid #333;
-                  border-top: 4px solid #fff;
-                  border-radius: 50%;
-                  animation: spin 1s linear infinite;
-                  margin: 0 auto 10px;
-              }
-          </style>
-          <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-        </head>
-        <body>
-            <div class="player-container">
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    Carregando ${channel.name}...
-                </div>
-                
-                <div class="channel-info" id="channelInfo">
-                    <strong>${channel.name}</strong><br>
-                </div>
-                
-                <video 
-                    class="video-player" 
-                    id="videoPlayer" 
-                    controls 
-                    autoplay 
-                    muted
-                    playsinline
-                    poster="${channel.logo || ''}"
-                ></video>
-                
-                <div class="error-message" id="errorMessage" style="display: none;">
-                    <h3>Erro ao carregar o canal</h3>
-                    <p>Verifique sua conexão com a internet</p>
-                    <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        Tentar Novamente
-                    </button>
-                </div>
-            </div>
-
-            <script>
-                const video = document.getElementById('videoPlayer');
-                const loading = document.getElementById('loading');
-                const errorMessage = document.getElementById('errorMessage');
-                const channelInfo = document.getElementById('channelInfo');
-                const streamUrl = '${channel.url}';
-                
-                // Auto-hide channel info after 5 seconds
-                setTimeout(() => {
-                    channelInfo.classList.add('hidden');
-                }, 5000);
-                
-                // Show channel info on hover/touch
-                document.addEventListener('mousemove', () => {
-                    channelInfo.classList.remove('hidden');
-                    clearTimeout(window.hideInfoTimer);
-                    window.hideInfoTimer = setTimeout(() => {
-                        channelInfo.classList.add('hidden');
-                    }, 3000);
-                });
-                
-                function initializePlayer() {
-                    // Detecta o tipo de stream pela URL
-                    const isHLS = streamUrl.includes('.m3u8') || streamUrl.includes('playlist');
-                    const isTS = streamUrl.includes('.ts');
-                    
-                    if (isHLS && Hls.isSupported()) {
-                        // Stream HLS com HLS.js
-                        const hls = new Hls({
-                            enableWorker: true,
-                            lowLatencyMode: true,
-                            backBufferLength: 90,
-                            maxBufferLength: 120,
-                            maxMaxBufferLength: 180,
-                            startLevel: -1,
-                            capLevelToPlayerSize: true
-                        });
-                        
-                        hls.loadSource(streamUrl);
-                        hls.attachMedia(video);
-                        
-                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                            loading.style.display = 'none';
-                            video.play().catch(e => console.log('Autoplay prevented:', e));
-                        });
-                        
-                        hls.on(Hls.Events.ERROR, (event, data) => {
-                            console.error('HLS Error:', data);
-                            if (data.fatal) {
-                                switch (data.type) {
-                                    case Hls.ErrorTypes.NETWORK_ERROR:
-                                        console.log('Network error - tentando recuperar...');
-                                        hls.startLoad();
-                                        break;
-                                    case Hls.ErrorTypes.MEDIA_ERROR:
-                                        console.log('Media error - tentando recuperar...');
-                                        hls.recoverMediaError();
-                                        break;
-                                    default:
-                                        showError();
-                                        break;
-                                }
-                            }
-                        });
-                        
-                    } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
-                        // Safari native HLS support
-                        video.src = streamUrl;
-                        video.addEventListener('loadedmetadata', () => {
-                            loading.style.display = 'none';
-                        });
-                        video.addEventListener('error', showError);
-                        
-                    } else {
-                        // Direct stream (TS files, MP4, etc.)
-                        video.src = streamUrl;
-                        
-                        // Para streams TS, configura headers apropriados
-                        if (isTS) {
-                            video.crossOrigin = 'anonymous';
-                        }
-                        
-                        video.addEventListener('loadedmetadata', () => {
-                            loading.style.display = 'none';
-                        });
-                        
-                        video.addEventListener('canplay', () => {
-                            loading.style.display = 'none';
-                        });
-                        
-                        video.addEventListener('error', (e) => {
-                            console.error('Video Error:', e);
-                            showError();
-                        });
-                        
-                        // Tenta carregar o vídeo
-                        video.load();
-                    }
-                }
-                
-                function showError() {
-                    loading.style.display = 'none';
-                    errorMessage.style.display = 'block';
-                }
-                
-                // Initialize player when page loads
-                window.addEventListener('load', initializePlayer);
-                
-                // Handle video events
-                video.addEventListener('waiting', () => {
-                    loading.style.display = 'block';
-                });
-                
-                video.addEventListener('playing', () => {
-                    loading.style.display = 'none';
-                    errorMessage.style.display = 'none';
-                });
-            </script>
-        </body>
-      </html>`;
-  }
 }
 
 module.exports = ChannelController;

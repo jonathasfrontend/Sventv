@@ -36,6 +36,7 @@ const mapRowToModel = (row, includeSensitive = false) => {
     lockUntil: includeSensitive ? row.lockUntil || null : undefined,
     apiTokenVersion: includeSensitive ? row.apiTokenVersion || 0 : undefined,
     apiTokenActive: includeSensitive ? Boolean(row.apiTokenActive) : undefined,
+    sessionVersion: row.sessionVersion || 0,
     accountRestricted: includeSensitive ? Boolean(row.accountRestricted) : undefined,
     restrictedReason: includeSensitive ? row.restrictedReason || null : undefined,
     lastLogin: row.lastLogin || null,
@@ -105,6 +106,7 @@ class User {
         id: this._id,
         email: this.email,
         role: this.role,
+        sv: this.sessionVersion || 0,
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
@@ -321,6 +323,25 @@ class User {
     try {
       const data = await userRepository.updateById(userId, { password: hash });
       return mapRowToModel(data, true);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        return null;
+      }
+      handleDbError(error);
+    }
+  }
+
+  /**
+   * Incrementa sessionVersion, revogando TODAS as sessões ativas do usuário.
+   * JWTs de sessão emitidos antes do bump carregam `sv` defasado e passam a
+   * ser rejeitados pelos middlewares (logout em todos os dispositivos).
+   */
+  static async bumpSessionVersion(userId) {
+    try {
+      const data = await userRepository.updateById(userId, {
+        sessionVersion: { increment: 1 },
+      });
+      return data?.sessionVersion || 1;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
         return null;

@@ -6,8 +6,10 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
-channel-tests/
+/docs
 
+channel-tests/
+AGENTS.md
 M3U/
 *.m3u
 *.m3u8

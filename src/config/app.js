@@ -32,6 +32,22 @@ const config = {
     expiresIn: process.env.JWT_API_EXPIRES_IN || '365d',
   },
 
+  // ---- JWT - Playback (token curto por canal, usado pelo player) ----
+  // O segredo é derivado de JWT_PLAYBACK_SECRET ou de jwtApi.secret dentro
+  // de streamTokenService; aqui fica apenas o TTL.
+  jwtPlayback: {
+    expiresIn: process.env.PLAYBACK_TOKEN_EXPIRES_IN || '2h',
+    expiresInSeconds: (() => {
+      const raw = (process.env.PLAYBACK_TOKEN_EXPIRES_IN || '2h').trim().toLowerCase();
+      const m = raw.match(/^(\d+)\s*(s|sec|seconds|m|min|minutes|h|hours|d|days)?$/);
+      if (!m) return 7200;
+      const n = parseInt(m[1], 10);
+      const unit = m[2] ? m[2][0] : 's';
+      const mult = { s: 1, m: 60, h: 3600, d: 86400 }[unit] || 1;
+      return Math.max(30, n * mult);
+    })(),
+  },
+
   // ---- Segurança ----
   security: {
     bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS, 10) || 12,

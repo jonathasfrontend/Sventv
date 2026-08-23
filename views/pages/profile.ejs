@@ -181,13 +181,14 @@
   </div>
 </main>
 
-<!-- Dados do usuário para o JS (data island — sem risco de XSS nem erro de linter) -->
+<!-- Dados do usuário para o JS (data island — sem risco de XSS nem erro de linter).
+     O apiToken é propositalmente omitido: o perfil busca em GET /api/auth/api-token
+     sob demanda (clique em Mostrar), nunca via HTML renderizado. -->
 <script type="application/json" id="__USER_DATA__"><%- JSON.stringify({
-  name:     locals.user ? locals.user.name     : null,
-  email:    locals.user ? locals.user.email    : null,
-  role:     locals.user ? locals.user.role     : null,
-  apiToken: locals.user ? locals.user.apiToken : null,
-  avatar:   locals.user ? locals.user.avatar   : null
+  name:  locals.user ? locals.user.name  : null,
+  email: locals.user ? locals.user.email : null,
+  role:  locals.user ? locals.user.role  : null,
+  avatar: locals.user ? locals.user.avatar : null
 }) %></script>
 <%- include('../partials/footer') %>
 <script src="/js/profile.js"></script>

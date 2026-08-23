@@ -241,7 +241,30 @@ const authService = {
 
     await User.updatePassword(userId, newPassword);
 
+    // Revoga todas as sessões ativas (outras abas/dispositivos caem)
+    await User.bumpSessionVersion(userId);
+
     logger.info(`🔒 Senha alterada: ${user.email}`);
+
+    // Reemite a sessão para o dispositivo que trocou a senha
+    const fresh = await User.findById(userId);
+    return { sessionToken: fresh ? fresh.generateSessionToken() : null };
+  },
+
+  /**
+   * Revoga todas as sessões ativas do usuário (logout server-side).
+   *
+   * @param {string} userId
+   * @returns {Promise<void>}
+   */
+  async logout(userId) {
+    if (!isDatabaseConnected()) {
+      throw createDatabaseUnavailableError(
+        'Serviço de autenticação temporariamente indisponível. Tente novamente em instantes.'
+      );
+    }
+
+    await User.bumpSessionVersion(userId);
   },
 
   /**

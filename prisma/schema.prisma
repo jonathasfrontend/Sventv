@@ -23,6 +23,7 @@ model User {
   lastLoginIp   String?   @map("last_login_ip") @db.VarChar(64)
   apiTokenVersion Int     @default(0) @map("api_token_version")
   apiTokenActive  Boolean @default(true) @map("api_token_active")
+  sessionVersion  Int     @default(0) @map("session_version")
   accountRestricted Boolean @default(false) @map("account_restricted")
   restrictedReason String? @map("restricted_reason") @db.VarChar(255)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

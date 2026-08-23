@@ -6,14 +6,11 @@ if (typeof document === 'undefined') {
 
 const adminDataEl = document.getElementById('__ADMIN_DATA__');
 const adminData = adminDataEl ? JSON.parse(adminDataEl.textContent) : {};
-const sessionToken = localStorage.getItem('sessionToken');
 
-if (!sessionToken) {
-  window.location.href = '/login?returnTo=/admin';
-}
-
+// Sessão via cookie httpOnly (mesma origem envia automaticamente).
+// Sem token de sessão em localStorage.
 if (!adminData.user || adminData.user.role !== 'admin') {
-  window.location.href = '/dashboard';
+  window.location.href = '/login?returnTo=/admin';
 }
 
 // ── DOM refs ─────────────────────────────────────────────────
@@ -44,8 +41,10 @@ let userSearchTimer = null;
 let channelSearchTimer = null;
 
 // ── API helpers ──────────────────────────────────────────────
+// A autenticação das rotas admin acontece pelo cookie httpOnly de
+// sessão enviado automaticamente em fetch same-origin.
 function authHeaders(json = true) {
-  const headers = { Authorization: `Bearer ${sessionToken}` };
+  const headers = {};
   if (json) headers['Content-Type'] = 'application/json';
   return headers;
 }

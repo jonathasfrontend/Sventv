@@ -105,6 +105,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   handler: limitHandler,
   keyGenerator: (req) => {
+    // Preferir id do usuário (definido pelo middleware de auth, que roda antes)
+    if (req.user?.id) return `api_${req.user.id}`;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       return `api_${authHeader.slice(7, 47)}`; // Prefixo do token como chave
@@ -159,11 +161,12 @@ const streamLimiter = rateLimit({
   legacyHeaders: false,
   handler: limitHandler,
   keyGenerator: (req) => {
+    if (req.user?.id) return `stream_${req.user.id}`;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       return `stream_${authHeader.slice(7, 47)}`;
     }
-    return `stream_${req.ip}`;
+    return req.query?.token ? `stream_${String(req.query.token).slice(0, 40)}` : `stream_${req.ip}`;
   },
   validate: false,
   skip: async (req, res) => {
@@ -207,6 +210,9 @@ const proxyStreamLimiter = rateLimit({
   legacyHeaders: false,
   handler: limitHandler,
   keyGenerator: (req) => {
+    // Preferir id do usuário: playback tokens compartilham o mesmo prefixo
+    // JWT — fatiar o token agruparia todos os viewers num único bucket.
+    if (req.user?.id) return `proxy_${req.user.id}`;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       return `proxy_${authHeader.slice(7, 47)}`;

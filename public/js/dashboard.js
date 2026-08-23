@@ -12,17 +12,9 @@ const __SSR__ = (() => {
   } catch (_) { return {}; }
 })();
 
-// Sincroniza apiToken com localStorage para requisições futuras
-if (__SSR__.apiToken) {
-  localStorage.setItem('apiToken', __SSR__.apiToken);
-}
-if (__SSR__.name) {
-  localStorage.setItem('user', JSON.stringify({ name: __SSR__.name }));
-}
-
-// Token para chamadas de API subsequentes (filtros, busca, paginação)
+// Token para chamadas de API subsequentes (filtros, busca, paginação).
+// A sessão web (páginas) usa o cookie httpOnly — nunca localStorage.
 const apiToken = __SSR__.apiToken || localStorage.getItem('apiToken');
-const sessionToken = localStorage.getItem('sessionToken');
 if (!apiToken) {
   window.location.href = '/login';
 }
@@ -78,7 +70,7 @@ async function apiFetch(endpoint) {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
   if (res.status === 401) {
-    localStorage.clear();
+    localStorage.removeItem('apiToken');
     window.location.href = '/login';
     return null;
   }
@@ -86,17 +78,10 @@ async function apiFetch(endpoint) {
   return res.json();
 }
 
-function sessionHeaders() {
-  return {
-    Authorization: `Bearer ${sessionToken}`,
-    'Content-Type': 'application/json',
-  };
-}
-
 // ── Buscar todos os canais via API (fallback ou refresh) ──────
 async function fetchAllChannels() {
   try {
-    const data = await apiFetch('/api/channels?limit=9999&page=1');
+    const data = await apiFetch('/api/channels');
     if (!data) return;
     const ch = data.channels || (data.data && data.data.channels) || [];
     state.allChannels = ch;
@@ -317,13 +302,18 @@ function loadPlayerFrame(ch) {
     return;
   }
 
-  // Monta URL do player: /api/channels/:id/stream?token=<apiToken>
-  const streamUrl = buildEmbedUrl(ch);
-  playerFrame.src = streamUrl;
-  playerError.hidden = true;
-
-  // Detecta falha de carregamento do iframe
-  playerFrame.onerror = () => { playerError.hidden = false; };
+  // Busca um playback token curto para este canal e só então carrega
+  // o iframe — o API token permanente nunca vai para o player.
+  getPlaybackToken(ch.id)
+    .then((pbToken) => {
+      playerFrame.src = buildStreamUrl(ch.id, pbToken);
+      playerError.hidden = true;
+      // Detecta falha de carregamento do iframe
+      playerFrame.onerror = () => { playerError.hidden = false; };
+    })
+    .catch(() => {
+      playerError.hidden = false;
+    });
 }
 
 function closeModal() {
@@ -346,19 +336,51 @@ retryBtn?.addEventListener('click', () => {
   }
 });
 
-// Monta a URL absoluta do embed do canal (player da API com token)
-function buildEmbedUrl(ch) {
-  if (!ch || !ch.id || !apiToken) return '';
-  return `${window.location.origin}/api/channels/${encodeURIComponent(ch.id)}/stream?token=${encodeURIComponent(apiToken)}`;
+// ── Playback tokens de curta duração ──────────────────────────
+// POST /api/channels/:id/playback emite um JWT (~2h) válido apenas
+// para o canal solicitado. Tokens são reutilizados enquanto válidos.
+const _playbackCache = new Map(); // channelId -> { token, expiresAt }
+
+async function getPlaybackToken(channelId) {
+  const cached = _playbackCache.get(channelId);
+
+  if (cached && Date.now() < cached.expiresAt) return cached.token;
+
+  const res = await fetch(`/api/channels/${encodeURIComponent(channelId)}/playback`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiToken}` },
+  });
+
+  const json = await res.json();
+
+  if (!res.ok || !json?.data?.playbackToken) {
+    throw new Error(json?.message || 'Falha ao obter token de reprodução');
+  }
+
+  const { playbackToken, expiresIn } = json.data;
+  const ttlMs = Math.max(30_000, (Number(expiresIn) || 7200) * 1000 - 60_000);
+
+  _playbackCache.set(channelId, { token: playbackToken, expiresAt: Date.now() + ttlMs });
+
+  return playbackToken;
+}
+
+// Monta a URL do stream com um token de reprodução (nunca o API token)
+function buildStreamUrl(channelId, token) {
+  if (!channelId || !token) return '';
+  return `${window.location.origin}/api/channels/${encodeURIComponent(channelId)}/stream?token=${encodeURIComponent(token)}`;
 }
 
 copyUrlBtn?.addEventListener('click', () => {
-  const url = buildEmbedUrl(_currentChannel);
-  if (!url) return;
-  navigator.clipboard.writeText(url).then(() => {
-    copyUrlBtn.textContent = '✓ Copiado!';
-    setTimeout(() => (copyUrlBtn.textContent = '📋 Copiar Embed'), 2000);
-  });
+  if (!_currentChannel?.id) return;
+
+  getPlaybackToken(_currentChannel.id)
+    .then((pbToken) => navigator.clipboard.writeText(buildStreamUrl(_currentChannel.id, pbToken)))
+    .then(() => {
+      copyUrlBtn.textContent = '✓ Copiado!';
+      setTimeout(() => (copyUrlBtn.textContent = '📋 Copiar Embed'), 2000);
+    })
+    .catch(() => {});
 });
 
 searchInput?.addEventListener('input', () => {

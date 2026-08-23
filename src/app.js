@@ -64,6 +64,17 @@ app.use(sanitizeMongo);
 app.use(sanitizeXss);
 app.use(securityLogger);
 
+// ── Clickjacking ─────────────────────────────────────────────
+// SAMEORIGIN para tudo, EXCETO /stream e /proxy (o player é feito
+// para ser embutido via iframe — lá o CSP frame-ancestors * já
+// foi definido no controller).
+app.use((req, res, next) => {
+  if (!/^\/api\/channels\/[^/]+\/(stream|proxy)(\/|$|\?)/.test(req.originalUrl || req.url)) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
+  next();
+});
+
 // ── Template Engine + Sessão ─────────────────────────────────
 
 app.set('view engine', 'ejs');

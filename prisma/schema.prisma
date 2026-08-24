@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Migrações (CLI) usam conexão direta/session pooler; o transaction
+  // pooler (:6543) da DATABASE_URL não suporta DDL.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

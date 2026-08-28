@@ -6,12 +6,11 @@
  * - HLS.js streaming with adaptive bitrate
  * - Custom Twitch-style controls
  * - Low latency mode
- * - Real-time statistics overlay
+ * - Quality selection (persistida)
  * - localStorage persistence
  * - Keyboard shortcuts
  * - Click/Double-click handling
  * - Auto-hide controls
- * - Quality selection
  * - Picture-in-Picture
  * - Fullscreen support
  */
@@ -36,15 +35,14 @@
     fullscreenBtn: null,
     fullscreenIcon: null,
     qualityList: null,
+    qualitySummary: null,
+    qualityCard: null,
     lowLatencyCheckbox: null,
     lowLatencyLabel: null,
-    showStatsCheckbox: null,
-    statsOverlay: null,
     liveBadge: null,
     loading: null,
     errorMessage: null,
-    channelInfo: null,
-    advancedSection: null
+    channelInfo: null
   };
 
   // ==================== ESTADO GLOBAL ====================
@@ -57,14 +55,11 @@
     levels: [],
     streamType: 'native', // 'hls' ou 'native'
     lowLatencyMode: false,
-    showStats: false,
     isFullscreen: false,
     showControls: true,
     hideTimeout: null,
     clickCount: 0,
     clickTimeout: null,
-    rafId: null,
-    lastStatsUpdate: 0,
     keyboardListenersAttached: false
   };
 
@@ -110,8 +105,8 @@
       return this.get('player_muted', false) === true || this.get('player_muted', false) === 'true';
     },
 
-    getShowStats() {
-      return this.get('player_show_stats', false) === true || this.get('player_show_stats', false) === 'true';
+    getQualityLevel() {
+      return parseInt(this.get('player_quality_level', '-1'), 10);
     },
 
     setLowLatency(value) {
@@ -126,8 +121,8 @@
       this.set('player_muted', value);
     },
 
-    setShowStats(value) {
-      this.set('player_show_stats', value);
+    setQualityLevel(value) {
+      this.set('player_quality_level', value);
     }
   };
 
@@ -150,15 +145,14 @@
       elements.fullscreenBtn = document.getElementById('fullscreenBtn');
       elements.fullscreenIcon = document.getElementById('fullscreenIcon');
       elements.qualityList = document.getElementById('qualityList');
+      elements.qualitySummary = document.getElementById('qualitySummary');
+      elements.qualityCard = document.getElementById('qualityCard');
       elements.lowLatencyCheckbox = document.getElementById('lowLatencyCheckbox');
       elements.lowLatencyLabel = document.getElementById('lowLatencyLabel');
-      elements.showStatsCheckbox = document.getElementById('showStatsCheckbox');
-      elements.statsOverlay = document.getElementById('statsOverlay');
       elements.liveBadge = document.getElementById('liveBadge');
       elements.loading = document.getElementById('loading');
       elements.errorMessage = document.getElementById('errorMessage');
       elements.channelInfo = document.getElementById('channelInfo');
-      elements.advancedSection = document.getElementById('advancedSection');
     },
 
     showUIElements() {
@@ -275,18 +269,6 @@
       }
     },
 
-    showStats() {
-      if (elements.statsOverlay) {
-        elements.statsOverlay.classList.add('player__stats--visible');
-      }
-    },
-
-    hideStats() {
-      if (elements.statsOverlay) {
-        elements.statsOverlay.classList.remove('player__stats--visible');
-      }
-    },
-
     updateErrorMessage(title, message) {
       if (elements.errorMessage) {
         const titleEl = elements.errorMessage.querySelector('.player__error-title');
@@ -297,6 +279,26 @@
       }
     }
   };
+
+  // ==================== HELPERS ====================
+  function getBufferLength() {
+    const video = elements.video;
+    if (!video || !video.buffered.length) return 0;
+
+    try {
+      const currentTime = video.currentTime;
+      for (let i = 0; i < video.buffered.length; i++) {
+        const start = video.buffered.start(i);
+        const end = video.buffered.end(i);
+        if (currentTime >= start && currentTime <= end) {
+          return end - currentTime;
+        }
+      }
+      return 0;
+    } catch (error) {
+      return 0;
+    }
+  }
 
   // ==================== MÓDULO: STALL MONITOR ====================
   const StallMonitor = {
@@ -324,7 +326,7 @@
       if (!video || video.paused || video.ended) return;
 
       const currentTime = video.currentTime;
-      const bufferLength = StatsModule.getBufferLength();
+      const bufferLength = getBufferLength();
       const stalled = video.readyState < 3 && !video.paused;
 
       if (stalled) {
@@ -475,6 +477,20 @@
             state.levels = hls.levels;
 
             UIModule.showLiveBadge();
+
+            // Aplica qualidade persistida somente quando existe mais de uma
+            // variante real para selecionar; caso contrário mantém automático.
+            const savedLevel = StorageModule.getQualityLevel();
+            const multiVariant = hls.levels.filter(
+              (l) => typeof l.height === 'number' && l.height > 0
+            ).length >= 2;
+            if (multiVariant && savedLevel >= 0 && savedLevel < hls.levels.length) {
+              hls.currentLevel = savedLevel;
+              state.currentLevel = savedLevel;
+            } else {
+              state.currentLevel = -1;
+            }
+
             this.updateQualityList();
 
             if (elements.lowLatencyLabel) {
@@ -491,7 +507,7 @@
           // Evento: Troca de nível
           hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
             state.currentLevel = hls.currentLevel;
-            this.updateQualityList();
+            this._syncQualityUI(hls.currentLevel >= 0 && hls.currentLevel < hls.levels.length ? hls.currentLevel : -1);
           });
 
           // Evento: Erro
@@ -507,6 +523,10 @@
                     } else if (data.response.code === 403) {
                       UIModule.showError();
                       this.updateErrorMessage('Acesso negado', 'O servidor bloqueou o acesso ao conteúdo (403)');
+                      return;
+                    } else if (data.response.code === 429) {
+                      UIModule.showError();
+                      this.updateErrorMessage('Limite de streams atingido', 'Você já tem o número máximo de streams abertos nesta conta. Feche outra aba/player e tente novamente.');
                       return;
                     }
                   }
@@ -578,276 +598,111 @@
       if (state.hls) {
         state.hls.currentLevel = levelIndex;
         state.currentLevel = levelIndex;
+        StorageModule.setQualityLevel(levelIndex);
         this.updateQualityList();
       }
+    },
+
+    _qualityLabel(level) {
+      const h = level.height;
+      if (typeof h === 'number' && h > 0) return `${h}p`;
+      if (level.name) return level.name;
+      return 'Auto';
+    },
+
+    _qualitySub(level) {
+      if (level.bitrate) return `${Math.round(level.bitrate / 1000)} kbps`;
+      return '';
     },
 
     updateQualityList() {
       if (!elements.qualityList) return;
 
-      if (state.levels.length === 0) {
-        // Se não há níveis, mantém apenas a opção automática
-        elements.qualityList.innerHTML = '<option value="-1">Automática</option>';
+      // Variantes com resolução declarada (níveis distintos)
+      const variants = (state.levels || []).filter(
+        (level) => typeof level.height === 'number' && level.height > 0
+      );
+
+      // Sem 2+ resoluções reais: o seletor não faz sentido — oculta o card
+      // e mantém a reprodução em automático.
+      if (variants.length < 2) {
+        if (elements.qualityCard) elements.qualityCard.style.display = 'none';
+        elements.qualityList.innerHTML = '';
+        if (elements.qualitySummary) elements.qualitySummary.textContent = 'Automática';
         return;
       }
 
-      // Salva o estado de event listener
-      const hasListener = elements.qualityList.hasAttribute('data-listener-attached');
+      if (elements.qualityCard) elements.qualityCard.style.display = 'block';
 
-      // Limpa as options atuais
-      elements.qualityList.innerHTML = '';
+      const active = state.hls ? state.hls.currentLevel : state.currentLevel;
 
-      // Opção Automática
-      const autoOption = document.createElement('option');
-      autoOption.value = '-1';
-      autoOption.textContent = 'Automática';
-      elements.qualityList.appendChild(autoOption);
-
-      // Níveis disponíveis
-      state.levels.forEach((level, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = `${level.height}p`;
-        elements.qualityList.appendChild(option);
+      const heightCount = {};
+      variants.forEach((level) => {
+        if (typeof level.height === 'number' && level.height > 0) heightCount[level.height] = (heightCount[level.height] || 0) + 1;
       });
 
-      // Define o valor selecionado
-      elements.qualityList.value = state.currentLevel.toString();
+      const ordered = variants
+        .map((level, index) => ({ index, level }))
+        .sort((a, b) => b.level.height - a.level.height);
 
-      // Adiciona event listener apenas uma vez
-      if (!hasListener) {
-        elements.qualityList.addEventListener('change', (e) => {
-          const level = parseInt(e.target.value);
-          this.changeQuality(level);
-        });
-        elements.qualityList.setAttribute('data-listener-attached', 'true');
+      const buttons = [];
+
+      // Auto
+      buttons.push(
+        '<button type="button" class="player__quality-btn' + (active < 0 ? ' is-active' : '') + '" data-level="-1" role="radio" aria-checked="' + (active < 0) + '">' +
+          '<span class="player__quality-btn-res">Auto</span>' +
+          '<span class="player__quality-btn-sub">Adaptativo</span>' +
+        '</button>'
+      );
+
+      ordered.forEach(({ index, level }) => {
+        const isActive = active === index;
+        let sub = this._qualitySub(level);
+        if (heightCount[level.height] > 1 && !sub) sub = '—';
+        buttons.push(
+          '<button type="button" class="player__quality-btn' + (isActive ? ' is-active' : '') + '" data-level="' + index + '" role="radio" aria-checked="' + isActive + '">' +
+            '<span class="player__quality-btn-res">' + this._qualityLabel(level) + '</span>' +
+            (sub ? '<span class="player__quality-btn-sub">' + sub + '</span>' : '') +
+          '</button>'
+        );
+      });
+
+      elements.qualityList.innerHTML = buttons.join('');
+
+      // Reflete o nível ativo
+      this._syncQualityUI(active >= 0 && active < state.levels.length ? active : -1);
+    },
+
+    _syncQualityUI(activeIndex) {
+      // Apenas reflete o estado visual e o resumo (sem re-render, evitando
+      // perder o foco/cliques durante a troca).
+      const buttons = elements.qualityList ? elements.qualityList.querySelectorAll('.player__quality-btn') : [];
+      buttons.forEach((btn) => {
+        const level = parseInt(btn.getAttribute('data-level'), 10);
+        const isActive = (level === activeIndex) || (activeIndex === -1 && level === -1);
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-checked', String(isActive));
+      });
+
+      // Se o seletor está oculto (fonte com única resolução), o resumo
+      // permanece "Automática" — nada a sincronizar.
+      const card = elements.qualityCard;
+      if (card && card.style.display === 'none') return;
+
+      if (elements.qualitySummary) {
+        if (activeIndex === -1) {
+          elements.qualitySummary.textContent = 'Automática';
+        } else if (state.levels[activeIndex]) {
+          elements.qualitySummary.textContent = this._qualityLabel(state.levels[activeIndex]);
+        } else {
+          elements.qualitySummary.textContent = 'Automática';
+        }
       }
     },
 
     reinitialize() {
       const url = CHANNEL_DATA.url;
       this.init(url, state.lowLatencyMode);
-    }
-  };
-
-  // ==================== MÓDULO: STATS ====================
-  const StatsModule = {
-    formatTime(seconds) {
-      if (!isFinite(seconds) || seconds < 0) return '00:00';
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    },
-
-    formatBitrate(bitrate) {
-      if (!bitrate) return 'N/A';
-      const kbps = bitrate / 1000;
-      if (kbps >= 1000) {
-        return `${(kbps / 1000).toFixed(2)} Mbps`;
-      }
-      return `${kbps.toFixed(0)} Kbps`;
-    },
-
-    getBufferLength() {
-      const video = elements.video;
-      if (!video || !video.buffered.length) return 0;
-
-      try {
-        const currentTime = video.currentTime;
-        for (let i = 0; i < video.buffered.length; i++) {
-          const start = video.buffered.start(i);
-          const end = video.buffered.end(i);
-          if (currentTime >= start && currentTime <= end) {
-            return end - currentTime;
-          }
-        }
-        return 0;
-      } catch (error) {
-        return 0;
-      }
-    },
-
-    getLiveLatency() {
-      if (!state.hls) return 0;
-
-      try {
-        if (typeof state.hls.latency === 'number') {
-          return state.hls.latency;
-        }
-
-        const video = elements.video;
-        if (video.buffered.length > 0) {
-          const liveEdge = video.buffered.end(video.buffered.length - 1);
-          const currentTime = video.currentTime;
-          return liveEdge - currentTime;
-        }
-
-        return 0;
-      } catch (error) {
-        return 0;
-      }
-    },
-
-    getPlaybackState() {
-      const video = elements.video;
-      if (!video) return 'N/A';
-      if (video.paused) return 'Pausado';
-      if (video.ended) return 'Finalizado';
-      if (video.seeking) return 'Buscando...';
-      if (video.readyState < 3) return 'Buffering...';
-      return 'Reproduzindo';
-    },
-
-    update() {
-      if (!state.showStats) {
-        if (state.rafId) {
-          cancelAnimationFrame(state.rafId);
-          state.rafId = null;
-        }
-        return;
-      }
-
-      const now = performance.now();
-
-      // Throttle: atualiza no máximo a cada 500ms
-      if (now - state.lastStatsUpdate < 500) {
-        state.rafId = requestAnimationFrame(() => this.update());
-        return;
-      }
-
-      state.lastStatsUpdate = now;
-
-      const video = elements.video;
-      if (!video) return;
-
-      // Resolução
-      let resolution = 'N/A';
-      let bitrate = 'N/A';
-      let quality = 'N/A';
-      let fps = 'N/A';
-
-      if (state.hls && state.currentLevel >= 0 && state.hls.levels[state.currentLevel]) {
-        const level = state.hls.levels[state.currentLevel];
-        resolution = `${level.width}x${level.height}`;
-        bitrate = this.formatBitrate(level.bitrate);
-        quality = `Nível ${state.currentLevel} (${level.height}p)`;
-
-        if (level.attrs && level.attrs['FRAME-RATE']) {
-          fps = parseFloat(level.attrs['FRAME-RATE']).toFixed(0);
-        }
-      } else if (state.hls) {
-        quality = 'Automático';
-      }
-
-      // Latência e buffer
-      const latency = this.getLiveLatency();
-      const latencyStr = latency > 0 ? `${latency.toFixed(2)}s` : 'N/A';
-
-      const bufferLength = this.getBufferLength();
-      const bufferStr = bufferLength > 0 ? `${bufferLength.toFixed(2)}s` : '0.00s';
-
-      // Estado
-      const playbackState = this.getPlaybackState();
-
-      // Frames perdidos
-      let droppedFrames = 0;
-      let totalFrames = 0;
-      if (video.getVideoPlaybackQuality) {
-        try {
-          const quality = video.getVideoPlaybackQuality();
-          droppedFrames = quality.droppedVideoFrames || 0;
-          totalFrames = quality.totalVideoFrames || 0;
-        } catch (error) {
-          // Silently fail
-        }
-      }
-
-      // Tempo e velocidade
-      const playbackTime = this.formatTime(video.currentTime);
-      const playbackRate = `${video.playbackRate.toFixed(1)}x`;
-
-      // Atualizar DOM
-      this.updateDOM({
-        resolution,
-        bitrate,
-        quality,
-        fps,
-        latency: latencyStr,
-        buffer: bufferStr,
-        state: playbackState,
-        droppedFrames,
-        totalFrames,
-        playbackTime,
-        playbackRate
-      });
-
-      // Agenda próxima atualização
-      state.rafId = requestAnimationFrame(() => this.update());
-    },
-
-    updateDOM(stats) {
-      const els = {
-        resolution: document.getElementById('statResolution'),
-        bitrate: document.getElementById('statBitrate'),
-        quality: document.getElementById('statQuality'),
-        fps: document.getElementById('statFps'),
-        latency: document.getElementById('statLatency'),
-        buffer: document.getElementById('statBuffer'),
-        state: document.getElementById('statState'),
-        frames: document.getElementById('statFrames'),
-        time: document.getElementById('statTime'),
-        rate: document.getElementById('statRate')
-      };
-
-      if (els.resolution) els.resolution.textContent = stats.resolution;
-      if (els.bitrate) els.bitrate.textContent = stats.bitrate;
-      if (els.quality) els.quality.textContent = stats.quality;
-      if (els.fps) els.fps.textContent = stats.fps;
-
-      // Latência com highlight
-      if (els.latency) {
-        els.latency.textContent = stats.latency;
-        const latencyVal = parseFloat(stats.latency);
-        if (!isNaN(latencyVal)) {
-          els.latency.className = latencyVal > 5 ? 'player__stats-value player__stats-value--warn' : 'player__stats-value';
-        }
-      }
-
-      // Buffer com highlight
-      if (els.buffer) {
-        els.buffer.textContent = stats.buffer;
-        const bufferVal = parseFloat(stats.buffer);
-        if (!isNaN(bufferVal)) {
-          els.buffer.className = bufferVal < 1 ? 'player__stats-value player__stats-value--warn' : 'player__stats-value';
-        }
-      }
-
-      if (els.state) els.state.textContent = stats.state;
-
-      // Frames com highlight
-      if (els.frames) {
-        if (stats.totalFrames > 0) {
-          els.frames.textContent = `${stats.droppedFrames} / ${stats.totalFrames}`;
-          els.frames.className = stats.droppedFrames > 0 ? 'player__stats-value player__stats-value--error' : 'player__stats-value';
-        } else {
-          els.frames.textContent = 'N/A';
-        }
-      }
-
-      if (els.time) els.time.textContent = stats.playbackTime;
-      if (els.rate) els.rate.textContent = stats.playbackRate;
-    },
-
-    start() {
-      if (!state.showStats) return;
-      this.update();
-    },
-
-    stop() {
-      if (state.rafId) {
-        cancelAnimationFrame(state.rafId);
-        state.rafId = null;
-      }
     }
   };
 
@@ -1012,22 +867,15 @@
         });
       }
 
-      // Checkbox: Estatísticas
-      if (elements.showStatsCheckbox) {
-        elements.showStatsCheckbox.checked = state.showStats;
-
-        elements.showStatsCheckbox.addEventListener('change', (e) => {
-          state.showStats = e.target.checked;
-          StorageModule.setShowStats(state.showStats);
-
-          if (state.showStats) {
-            UIModule.showStats();
-            StatsModule.start();
-          } else {
-            UIModule.hideStats();
-            StatsModule.stop();
-          }
+      // Seletor de qualidade (botões customizados)
+      if (elements.qualityList && !elements.qualityList.hasAttribute('data-listener-attached')) {
+        elements.qualityList.addEventListener('click', (e) => {
+          const btn = e.target.closest('.player__quality-btn');
+          if (!btn) return;
+          const level = parseInt(btn.getAttribute('data-level'), 10);
+          HLSModule.changeQuality(isNaN(level) ? -1 : level);
         });
+        elements.qualityList.setAttribute('data-listener-attached', 'true');
       }
     },
 
@@ -1135,7 +983,6 @@
 
     // 2. Carregar configurações persistidas
     state.lowLatencyMode = StorageModule.getLowLatency();
-    state.showStats = StorageModule.getShowStats();
 
     // 3. Inicializar HLS
     HLSModule.init(CHANNEL_DATA.url, state.lowLatencyMode);
@@ -1152,13 +999,7 @@
     // 5. Inicializar atalhos de teclado
     KeyboardModule.init();
 
-    // 6. Inicializar stats (se habilitado)
-    if (state.showStats) {
-      UIModule.showStats();
-      StatsModule.start();
-    }
-
-    // 7. Event listeners do vídeo
+    // 6. Event listeners do vídeo
     if (elements.video) {
       elements.video.addEventListener('waiting', () => {
         UIModule.showLoading();
@@ -1183,7 +1024,7 @@
 
       elements.video.addEventListener('stalled', () => {
         if (state.hls) {
-          const bufferLen = StatsModule.getBufferLength();
+          const bufferLen = getBufferLength();
           if (bufferLen < 2) {
             const liveEdge = elements.video.buffered.length > 0
               ? elements.video.buffered.end(elements.video.buffered.length - 1)
@@ -1202,7 +1043,6 @@
   // ==================== CLEANUP ====================
   function cleanup() {
     HLSModule.destroy();
-    StatsModule.stop();
     StallMonitor.stop();
 
     if (state.hideTimeout) {

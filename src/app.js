@@ -23,9 +23,14 @@ const M3UService = require('./services/m3uService');
 const { ensureDBConnection } = require('./config/database');
 const { errorHandler, notFound, requestLogger } = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
+const requestId = require('./middlewares/requestId');
 const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = require('./middlewares/security');
 
 const app = express();
+
+// ── Request ID (primeiro: disponível a todos os demais) ─────
+
+app.use(requestId);
 
 // ── Segurança ───────────────────────────────────────────────
 

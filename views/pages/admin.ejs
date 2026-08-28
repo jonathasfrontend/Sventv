@@ -10,24 +10,88 @@
     <div>
       <span class="badge badge-primary">Admin</span>
       <h1>Painel Administrativo</h1>
-      <p>Gestão de canais, usuários e monitoramento de streams.</p>
+      <p>Gestão de métricas, canais e usuários da SvenTV.</p>
     </div>
     <div class="admin-hero-actions">
       <button class="btn btn-ghost btn-sm" id="refreshAdminBtn">Atualizar tudo</button>
     </div>
   </section>
 
-  <section class="admin-kpis" id="adminKpis">
-    <div class="admin-kpi-card"><span>Total Canais</span><strong id="kpiChannels">—</strong></div>
-    <div class="admin-kpi-card kpi-online"><span>Online</span><strong id="kpiOnline">—</strong></div>
-    <div class="admin-kpi-card kpi-offline"><span>Offline</span><strong id="kpiOffline">—</strong></div>
-    <div class="admin-kpi-card"><span>Usuários</span><strong id="kpiUsers">—</strong></div>
+  <nav class="admin-tabs" id="adminTabs" role="tablist">
+    <button class="admin-tab admin-tab--active" data-tab="metrics" role="tab" aria-selected="true">📊 Métricas</button>
+    <button class="admin-tab" data-tab="channels" role="tab" aria-selected="false">📺 Canais</button>
+    <button class="admin-tab" data-tab="users" role="tab" aria-selected="false">👥 Usuários</button>
+  </nav>
+
+  <!-- ═══════════════ MÉTRICAS ═══════════════ -->
+  <section class="admin-tabpanel admin-tabpanel--active" data-panel="metrics">
+    <div class="admin-kpis">
+      <div class="admin-kpi-card"><span>Total Canais</span><strong id="kpiChannels">—</strong></div>
+      <div class="admin-kpi-card kpi-online"><span>Online</span><strong id="kpiOnline">—</strong></div>
+      <div class="admin-kpi-card kpi-offline"><span>Offline</span><strong id="kpiOffline">—</strong></div>
+      <div class="admin-kpi-card kpi-users"><span>Usuários</span><strong id="kpiUsers">—</strong></div>
+    </div>
+
+    <div class="admin-panel admin-metrics-panel">
+      <div class="admin-panel-header">
+        <h2>Métricas de Streaming</h2>
+        <div class="admin-panel-filters">
+          <span class="metrics-note">Em memória desta instância (lambda)</span>
+          <button class="btn btn-ghost btn-sm" id="refreshMetricsBtn">Atualizar</button>
+        </div>
+      </div>
+      <div class="admin-metrics-grid">
+        <div class="metric-card"><span class="metric-icon">🔄</span><div><span>Requisições proxy</span><strong id="metricProxyRequests">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">📄</span><div><span>Playlists</span><strong id="metricPlaylists">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">🧩</span><div><span>Segmentos</span><strong id="metricSegments">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">⚠️</span><div><span>Erros proxy</span><strong id="metricProxyErrors">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">🛡️</span><div><span>SSRF bloqueados</span><strong id="metricSSRF">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">▶️</span><div><span>Streams ativos</span><strong id="metricActiveStreams">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">📈</span><div><span>Pico streams</span><strong id="metricPeakStreams">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon">⏱️</span><div><span>Latência média (ms)</span><strong id="metricAvgProxy">—</strong></div></div>
+      </div>
+    </div>
+
+    <div class="admin-panel admin-audit-panel">
+      <div class="admin-panel-header">
+        <h2>Logs de Auditoria</h2>
+        <div class="admin-panel-filters">
+          <select id="auditActionFilter" class="form-input">
+            <option value="">Todas as ações</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="loadAuditBtn">Recarregar</button>
+        </div>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-table--audit">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Ação</th>
+              <th>Usuário</th>
+              <th>Canal</th>
+              <th>IP</th>
+              <th>Request ID</th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+            <tr><td colspan="6">Carregando auditoria...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
-  <section class="admin-panel admin-channels-panel">
-    <div class="admin-panel-header">
-      <h2>Canais</h2>
-      <div class="admin-panel-filters">
+  <!-- ═══════════════ CANAIS ═══════════════ -->
+  <section class="admin-tabpanel" data-panel="channels">
+    <div class="admin-panel admin-channels-panel">
+      <div class="admin-panel-header">
+        <div>
+          <h2>Canais</h2>
+          <p class="admin-panel-sub">Lista completa de canais da playlist M3U</p>
+        </div>
+      </div>
+      <div class="admin-filters-bar">
         <input type="search" id="channelSearch" class="form-input" placeholder="Buscar canal...">
         <select id="channelStatusFilter" class="form-input">
           <option value="">Todos os status</option>
@@ -41,32 +105,38 @@
         <button class="btn btn-ghost btn-sm" id="checkAllChannelsBtn" title="Verificar saúde de todos os canais">Verificar tudo</button>
         <button class="btn btn-ghost btn-sm" id="reloadChannelsBtn" title="Recarregar lista de canais do arquivo M3U">Recarregar M3U</button>
       </div>
-    </div>
 
-    <div class="admin-table-wrap">
-      <table class="admin-table admin-table--channels">
-        <thead>
-          <tr>
-            <th class="ch-col-logo"></th>
-            <th>Canal</th>
-            <th>Categoria</th>
-            <th>Formato</th>
-            <th>Status</th>
-            <th>Verificado</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="channelsTableBody">
-          <tr><td colspan="7">Carregando canais...</td></tr>
-        </tbody>
-      </table>
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-table--channels">
+          <thead>
+            <tr>
+              <th class="ch-col-logo"></th>
+              <th>Canal</th>
+              <th>Categoria</th>
+              <th>Formato</th>
+              <th>Status</th>
+              <th>Verificado</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="channelsTableBody">
+            <tr><td colspan="7">Carregando canais...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
-  <section class="admin-panel admin-users-panel">
-    <div class="admin-panel-header">
-      <h2>Usuários</h2>
-      <div class="admin-panel-filters">
+  <!-- ═══════════════ USUÁRIOS ═══════════════ -->
+  <section class="admin-tabpanel" data-panel="users">
+    <div class="admin-panel admin-users-panel">
+      <div class="admin-panel-header">
+        <div>
+          <h2>Usuários</h2>
+          <p class="admin-panel-sub">Gestão de contas, papéis e status</p>
+        </div>
+      </div>
+      <div class="admin-filters-bar">
         <input type="search" id="userSearch" class="form-input" placeholder="Buscar por nome ou e-mail">
         <select id="roleFilter" class="form-input">
           <option value="">Todas as roles</option>
@@ -74,23 +144,23 @@
           <option value="admin">admin</option>
         </select>
       </div>
-    </div>
 
-    <div class="admin-table-wrap">
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th>Usuário</th>
-            <th>Role</th>
-            <th>Plano</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="usersTableBody">
-          <tr><td colspan="5">Carregando...</td></tr>
-        </tbody>
-      </table>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Usuário</th>
+              <th>Role</th>
+              <th>Plano</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr><td colspan="5">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 </main>

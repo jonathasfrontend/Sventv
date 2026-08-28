@@ -1,6 +1,10 @@
 const M3UService = require('../services/m3uService');
 const ChannelHealthService = require('../services/channelHealthService');
 const { issuePlaybackToken, openSealedTarget, sealTarget } = require('../services/streamTokenService');
+const { assertSafeTarget } = require('../services/ssrfGuard');
+const { audit } = require('../services/auditService');
+const { inc, snapActiveStream, recordProxyLatency } = require('../utils/metrics');
+const { acquireSlot, releaseSlot } = require('../middlewares/streamLimiter');
 const { toPublicChannel, toPublicChannels } = require('../utils/publicChannel');
 const axios = require('axios');
 const http = require('http');
@@ -191,6 +195,21 @@ class ChannelController {
       }
 
       const { playbackToken, expiresIn } = issuePlaybackToken(req.user, id);
+
+      audit({
+        action: 'stream.playback_token',
+        req,
+        userId: req.user?.id,
+        channelId: id,
+      });
+
+      // Registra um "stream ativo" enquanto o playback token for válido:
+      // incrementa agora e agenda o decremento após o período de expiração.
+      // Aproxima o número de players abertos/ativos desta instância.
+      snapActiveStream(1);
+      if (expiresIn > 0) {
+        setTimeout(() => snapActiveStream(-1), expiresIn * 1000).unref?.();
+      }
 
       res.status(200).json({
         success: true,
@@ -481,6 +500,7 @@ class ChannelController {
     try {
       const { id } = req.params;
       const token = req.authToken || req.apiToken || req.query.token || '';
+      inc('proxyRequests');
       const channel = this.m3uService.getChannelById(id);
 
       if (!channel) {
@@ -488,6 +508,27 @@ class ChannelController {
           success: false,
           message: 'Canal não encontrado'
         });
+      }
+
+      const isInitialRequest = !req.query.p;
+
+      // Limite de streams simultâneos por usuário (apenas na requisição
+      // inicial do player; segmentos têm rate limiter próprio e alto).
+      if (isInitialRequest && !(await acquireSlot(req))) {
+        inc('streamRequests');
+        return res.status(429).json({
+          success: false,
+          message: 'Limite de streams simultâneos atingido para esta conta.',
+        });
+      }
+
+      if (isInitialRequest) {
+        // Incrementa no início do stream (bootstrap da requisição inicial)
+        // e decrementa ao finalizar. O decremento em 'finish' + liberação
+        // em 'close' são idempotentes (clamp em 0).
+        snapActiveStream(1);
+        res.once('finish', () => snapActiveStream(-1));
+        res.once('close', () => releaseSlot(req));
       }
 
       // Alvo: canal principal (sem ?p) ou sub-recurso selado (?p=...)
@@ -528,37 +569,104 @@ class ChannelController {
         return res.status(400).json({ success: false, message: 'Protocolo de stream não suportado' });
       }
 
-      // Busca na origem com 1 retry para erros de rede transitórios
-      const fetchUpstream = () => axios.get(targetUrl.toString(), {
-        responseType: 'stream',
-        timeout: 15000,
-        maxRedirects: 5,
-        httpAgent: this._proxyHttpAgent,
-        httpsAgent: this._proxyHttpsAgent,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-          'Accept': '*/*',
-          ...(req.headers.range ? { Range: req.headers.range } : {}),
-        },
-        validateStatus: () => true,
-      });
+      // Guarda anti-SSRF: bloqueia destinos link-local/privado/loopback
+      // (169.254.169.254, 127.0.0.1, 10/8, etc.) antes de qualquer saída.
+      try {
+        await assertSafeTarget(targetUrl);
+      } catch (ssrfErr) {
+        if (ssrfErr.code === 'SSRF_BLOCKED') {
+          inc('proxySSRFBlocked');
+          inc('proxyErrors');
+          return res.status(403).json({ success: false, message: 'Destino de stream bloqueado' });
+        }
+        // Erro de DNS ou URL inválida → 502 genérico, sem expor o destino.
+        inc('proxyErrors');
+        return res.status(502).json({ success: false, message: 'Erro ao encaminhar o stream' });
+      }
 
       let upstream = null;
       let netError = null;
+
+      // Busca na origem com suporte manual a redirects: cada hop é
+      // revalidado pela guarda anti-SSRF antes de ser seguido.
+      const fetchWithRedirects = async (url, rangeHeader, hopsLeft) => {
+        try {
+          await assertSafeTarget(url);
+        } catch (ssrfErr) {
+          if (ssrfErr.code === 'SSRF_BLOCKED') {
+            const e = new Error('Destino de stream bloqueado');
+            e.code = 'SSRF_BLOCKED';
+            throw e;
+          }
+          throw ssrfErr;
+        }
+
+        const response = await axios.get(url.toString(), {
+          responseType: 'stream',
+          timeout: 15000,
+          maxRedirects: 0,
+          httpAgent: this._proxyHttpAgent,
+          httpsAgent: this._proxyHttpsAgent,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            'Accept': '*/*',
+            ...(rangeHeader ? { Range: rangeHeader } : {}),
+          },
+          validateStatus: (status) => (status >= 300 && status < 400) || status < 300,
+        });
+
+        if (response.status >= 300 && response.status < 400) {
+          // Libera o corpo do redirect (não consumido)
+          if (response.data && typeof response.data.destroy === 'function') {
+            response.data.destroy();
+          }
+          const location = response.headers.location;
+          if (location && hopsLeft > 0) {
+            const nextUrl = new URL(location, url);
+            if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
+              const e = new Error('Protocolo de stream não suportado');
+              e.code = 'BAD_PROTOCOL';
+              throw e;
+            }
+            return fetchWithRedirects(nextUrl, req.headers.range, hopsLeft - 1);
+          }
+          // Sem location ou limite de hops: devolve a resposta 3xx
+          // (o upstream retornará o corpo vazio, tratado como 502 abaixo).
+          const e = new Error('Redirecionamento não seguido');
+          e.code = 'TOO_MANY_REDIRECTS';
+          throw e;
+        }
+
+        return { response, targetUrl: url };
+      };
+
+      const fetchStart = Date.now();
+      const doFetch = () => fetchWithRedirects(targetUrl, req.headers.range, 5);
+
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          upstream = await fetchUpstream();
+          const result = await doFetch();
+          upstream = result.response;
           netError = null;
           break;
         } catch (e) {
           netError = e;
+          if (e.code === 'SSRF_BLOCKED') break;
           if (attempt === 0) {
             await new Promise((r) => setTimeout(r, 300));
           }
         }
       }
+      recordProxyLatency(Date.now() - fetchStart);
+
+      if (netError && netError.code === 'SSRF_BLOCKED') {
+        inc('proxySSRFBlocked');
+        inc('proxyErrors');
+        return res.status(403).json({ success: false, message: 'Destino de stream bloqueado' });
+      }
 
       if (!upstream) {
+        inc('proxyErrors');
         console.error(`❌ Proxy [rede] ${targetUrl.host}: code=${netError?.code} msg=${netError?.message}`);
         return res.status(502).json({
           success: false,
@@ -568,6 +676,7 @@ class ChannelController {
       }
 
       if (upstream.status >= 400) {
+        inc('proxyErrors');
         console.error(`❌ Proxy [origem] ${targetUrl.host}: HTTP ${upstream.status}`);
         return res.status(502).json({
           success: false,
@@ -580,6 +689,7 @@ class ChannelController {
 
       // Playlist → reescreve URIs para voltarem pelo proxy
       if (this._isPlaylistUrl(targetUrl.toString()) || contentType.includes('mpegurl')) {
+        inc('proxyPlaylists');
         const chunks = [];
         for await (const chunk of upstream.data) chunks.push(chunk);
         const text = Buffer.concat(chunks).toString('utf-8');
@@ -593,6 +703,7 @@ class ChannelController {
       }
 
       // Segmentos binários (.ts/.m4s/.mp4), chaves AES, etc. → pipe direto
+      inc('proxySegments');
       res.status(upstream.status);
       res.setHeader('Access-Control-Allow-Origin', '*');
       if (upstream.headers['content-type']) res.setHeader('Content-Type', upstream.headers['content-type']);
@@ -602,6 +713,7 @@ class ChannelController {
 
       upstream.data.pipe(res);
     } catch (error) {
+      inc('proxyErrors');
       console.error(`❌ Proxy [exceção] code=${error.code} msg=${error.message}`);
       if (!res.headersSent) {
         res.status(502).json({

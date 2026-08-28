@@ -11,6 +11,7 @@ const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const config = require('../config/app');
 const { uploadAvatar } = require('../services/avatarService');
+const { audit } = require('../services/auditService');
 
 // ─────────────────────────────────────────────────────────────
 // Helper: extrai o IP real considerando proxies
@@ -50,6 +51,13 @@ const authController = {
 
       setSessionCookie(res, result.sessionToken);
 
+      audit({
+        action: 'auth.register',
+        req,
+        userId: result.user?.id,
+        email: result.user?.email,
+      });
+
       return res.status(201).json({
         success: true,
         message: 'Conta criada com sucesso! Guarde seu token de API em local seguro.',
@@ -79,6 +87,13 @@ const authController = {
       const result = await authService.login({ email, password, ip });
 
       setSessionCookie(res, result.sessionToken);
+
+      audit({
+        action: 'auth.login',
+        req,
+        userId: result.user?.id,
+        email: result.user?.email,
+      });
 
       return res.status(200).json({
         success: true,
@@ -210,6 +225,13 @@ const authController = {
         setSessionCookie(res, result.sessionToken);
       }
 
+      audit({
+        action: 'auth.change_password',
+        req,
+        userId: req.user._id,
+        email: req.user.email,
+      });
+
       return res.status(200).json({
         success: true,
         message: 'Senha alterada com sucesso. As demais sessões ativas foram encerradas.',
@@ -232,6 +254,13 @@ const authController = {
       const newToken = await authService.regenerateApiToken(req.user._id);
 
       logger.info(`🔄 Token regenerado para o usuário: ${req.user.email}`);
+
+      audit({
+        action: 'auth.regenerate_api_token',
+        req,
+        userId: req.user._id,
+        email: req.user.email,
+      });
 
       return res.status(200).json({
         success: true,
@@ -258,6 +287,14 @@ const authController = {
       }
 
       logger.info(`👋 Logout: ${req.user?.email || 'desconhecido'}`);
+
+      audit({
+        action: 'auth.logout',
+        req,
+        userId: req.user?._id,
+        email: req.user?.email,
+      });
+
       res.clearCookie('sessionToken', { path: '/' });
       return res.status(200).json({
         success: true,

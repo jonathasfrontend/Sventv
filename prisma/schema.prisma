@@ -85,3 +85,21 @@ model RequestUsage {
   @@index([bucketStart], map: "request_usage_bucket_idx")
   @@map("request_usage")
 }
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action    String   @db.VarChar(80)
+  userId    String?  @map("user_id") @db.Uuid
+  email     String?  @db.VarChar(255)
+  ip        String?  @db.VarChar(64)
+  userAgent String?  @map("user_agent") @db.VarChar(512)
+  requestId String?  @map("request_id") @db.VarChar(64)
+  channelId String?  @map("channel_id") @db.VarChar(255)
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "audit_logs_user_idx")
+  @@index([action], map: "audit_logs_action_idx")
+  @@index([createdAt], map: "audit_logs_created_idx")
+  @@map("audit_logs")
+}

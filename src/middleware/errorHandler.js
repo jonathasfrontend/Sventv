@@ -21,6 +21,7 @@ const errorHandler = (err, req, res, next) => {
     method: req.method,
     ip: req.ip,
     userId: req.user?._id?.toString?.() || req.user?.id,
+    requestId: req.id || req.requestId || null,
     timestamp: new Date().toISOString(),
   });
 
@@ -143,9 +144,16 @@ const requestLogger = (req, res, next) => {
     const duration = Date.now() - start;
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'http';
 
-    logger[level] || logger.info(
-      `${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms) | IP=${req.ip}`
-    );
+    logger[level] || logger.info({
+      message: `${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms)`,
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      durationMs: duration,
+      ip: req.ip,
+      requestId: req.id || req.requestId || null,
+      userId: req.user?._id?.toString?.() || req.user?.id || null,
+    });
   });
 
   next();

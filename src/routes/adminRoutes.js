@@ -18,4 +18,7 @@ router.post('/channels/reload', adminController.reloadChannels);
 router.post('/channels/:channelId/check', adminController.checkChannelHealth);
 router.post('/channels/check-all', adminController.checkAllChannelsHealth);
 
+router.get('/metrics', adminController.getMetrics);
+router.get('/audit-logs', adminController.getAuditLogs);
+
 module.exports = router;

@@ -366,18 +366,158 @@ async function loadUsers() {
 }
 
 // ════════════════════════════════════════════════════════════
+//  METRICS
+// ════════════════════════════════════════════════════════════
+
+const metricEls = {
+  proxyRequests:   document.getElementById('metricProxyRequests'),
+  playlists:       document.getElementById('metricPlaylists'),
+  segments:        document.getElementById('metricSegments'),
+  proxyErrors:     document.getElementById('metricProxyErrors'),
+  ssrf:            document.getElementById('metricSSRF'),
+  activeStreams:   document.getElementById('metricActiveStreams'),
+  peakStreams:     document.getElementById('metricPeakStreams'),
+  avgProxy:        document.getElementById('metricAvgProxy'),
+};
+const refreshMetricsBtn = document.getElementById('refreshMetricsBtn');
+
+function setMetricMetric(key, value) {
+  const el = metricEls[key];
+  if (el) el.textContent = value;
+}
+
+function renderMetrics(data) {
+  const c = data?.counters || {};
+  const lat = data?.latency || {};
+  setMetricMetric('proxyRequests', c.proxyRequests ?? '—');
+  setMetricMetric('playlists', c.proxyPlaylists ?? '—');
+  setMetricMetric('segments', c.proxySegments ?? '—');
+  setMetricMetric('proxyErrors', c.proxyErrors ?? '—');
+  setMetricMetric('ssrf', c.proxySSRFBlocked ?? '—');
+  setMetricMetric('activeStreams', c.activeStreams ?? '—');
+  setMetricMetric('peakStreams', c.activeStreamsPeak ?? '—');
+  setMetricMetric('avgProxy', lat.avgProxyMs ?? '—');
+}
+
+async function loadMetrics() {
+  const json = await apiGet('/api/admin/metrics');
+  renderMetrics(json.data);
+}
+
+// ════════════════════════════════════════════════════════════
+//  AUDIT LOGS
+// ════════════════════════════════════════════════════════════
+
+const auditTableBody   = document.getElementById('auditTableBody');
+const auditActionFilter = document.getElementById('auditActionFilter');
+const loadAuditBtn     = document.getElementById('loadAuditBtn');
+
+let auditCache = [];
+
+function renderAudit() {
+  if (!auditTableBody) return;
+  if (!auditCache.length) {
+    auditTableBody.innerHTML = '<tr><td colspan="6" class="audit-empty">Nenhum evento de auditoria registrado.</td></tr>';
+    return;
+  }
+  auditTableBody.innerHTML = auditCache.map(log => {
+    const meta = log.meta ? JSON.stringify(log.meta) : '';
+    return `
+      <tr>
+        <td><span class="audit-meta">${escapeHtml(formatDateTime(log.createdAt))}</span></td>
+        <td><span class="audit-action">${escapeHtml(log.action)}</span></td>
+        <td><span class="audit-meta">${escapeHtml(log.email || log.userId || '—')}</span></td>
+        <td><span class="audit-meta">${escapeHtml(log.channelId || '—')}</span></td>
+        <td><span class="audit-meta">${escapeHtml(log.ip || '—')}</span></td>
+        <td><span class="audit-reqid" title="${escapeHtml(meta)}">${escapeHtml(log.requestId || '—')}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function formatDateTime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function populateAuditActions() {
+  if (!auditActionFilter) return;
+  const actions = new Set(auditCache.map(log => log.action).filter(Boolean));
+  const current = auditActionFilter.value;
+  while (auditActionFilter.options.length > 1) auditActionFilter.remove(1);
+  [...actions].sort().forEach(action => {
+    const opt = document.createElement('option');
+    opt.value = action;
+    opt.textContent = action;
+    auditActionFilter.appendChild(opt);
+  });
+  auditActionFilter.value = current;
+}
+
+async function loadAudit() {
+  const action = auditActionFilter?.value || '';
+  const qs = action ? `?action=${encodeURIComponent(action)}` : '';
+  const json = await apiGet(`/api/admin/audit-logs${qs}`);
+  auditCache = json.data?.logs || [];
+  populateAuditActions();
+  renderAudit();
+}
+
+// ════════════════════════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════════════════════════
+
+const tabButtons = Array.from(document.querySelectorAll('.admin-tab'));
+const tabPanels = Array.from(document.querySelectorAll('.admin-tabpanel'));
+
+function activateTab(name) {
+  tabButtons.forEach(btn => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle('admin-tab--active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  tabPanels.forEach(panel => {
+    panel.classList.toggle('admin-tabpanel--active', panel.dataset.panel === name);
+  });
+
+  // Atualiza a seção recém-aberta (metadados podem ter mudado)
+  if (name === 'metrics') {
+    loadMetrics().catch(() => {});
+    loadAudit().catch(() => {});
+  } else if (name === 'channels') {
+    loadChannels().catch(() => {});
+  } else if (name === 'users') {
+    loadUsers().catch(() => {});
+  }
+}
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+});
+
+// ════════════════════════════════════════════════════════════
 //  INIT & EVENTS
 // ════════════════════════════════════════════════════════════
 
 async function refreshAll() {
   hideAlert();
-  await Promise.all([loadUsers(), loadChannels()]);
+  await Promise.all([
+    loadUsers(),
+    loadChannels(),
+    Promise.resolve(loadMetrics()).catch(() => {}),
+    Promise.resolve(loadAudit()).catch(err => showAlert('Falha ao carregar auditoria: ' + err.message)),
+  ]);
 }
 
 refreshAdminBtn?.addEventListener('click', () => refreshAll().catch(err => showAlert(err.message)));
 reloadUsersBtn?.addEventListener('click', () => loadUsers().catch(err => showAlert(err.message)));
 checkAllChannelsBtn?.addEventListener('click', () => checkAllChannels().catch(err => showAlert(err.message)));
 reloadChannelsBtn?.addEventListener('click', () => reloadM3U().catch(err => showAlert(err.message)));
+refreshMetricsBtn?.addEventListener('click', () => loadMetrics().catch(err => showAlert(err.message)));
+loadAuditBtn?.addEventListener('click', () => loadAudit().catch(err => showAlert(err.message)));
+auditActionFilter?.addEventListener('change', () => loadAudit().catch(err => showAlert(err.message)));
 
 userSearch?.addEventListener('input', () => {
   clearTimeout(userSearchTimer);

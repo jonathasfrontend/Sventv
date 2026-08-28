@@ -31,67 +31,9 @@
     <!-- Error Message -->
     <div class="player__error" id="errorMessage">
       <div class="player__error-content">
+        <p class="player__error-title">Erro de reprodução</p>
         <p class="player__error-message">Erro de rede. Tente novamente mais tarde.</p>
         <button class="player__error-btn" onclick="location.reload()"> <img src="/Player/assets/icons/arrows-counter-clockwise.svg" class="player__error-icon"> Recarregar player</button>
-      </div>
-    </div>
-
-    <!-- Overlay de Estatísticas -->
-    <div class="player__stats" id="statsOverlay">
-      <div class="player__stats-title">📊 Estatísticas do Vídeo</div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Resolução:</span>
-        <span class="player__stats-value" id="statResolution">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Bitrate:</span>
-        <span class="player__stats-value" id="statBitrate">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Qualidade:</span>
-        <span class="player__stats-value" id="statQuality">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">FPS:</span>
-        <span class="player__stats-value" id="statFps">N/A</span>
-      </div>
-
-      <div class="player__stats-divider"></div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Latência ao Vivo:</span>
-        <span class="player__stats-value" id="statLatency">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Tamanho do Buffer:</span>
-        <span class="player__stats-value" id="statBuffer">N/A</span>
-      </div>
-
-      <div class="player__stats-divider"></div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Estado:</span>
-        <span class="player__stats-value" id="statState">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Frames Perdidos:</span>
-        <span class="player__stats-value" id="statFrames">N/A</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Tempo Reproduzido:</span>
-        <span class="player__stats-value" id="statTime">00:00</span>
-      </div>
-
-      <div class="player__stats-row">
-        <span class="player__stats-label">Velocidade:</span>
-        <span class="player__stats-value" id="statRate">1.0x</span>
       </div>
     </div>
 
@@ -146,42 +88,52 @@
     <!-- Menu de Configurações -->
     <div class="player__settings-menu" id="settingsMenu">
 
-      <!-- Seção: Qualidade -->
-      <div class="player__settings-section">
-        <div class="player__settings-section-title">Qualidade</div>
-        <div class="player__settings-quality-list">
-          <select class="player__settings-quality-select" id="qualityList">
-            <option value="-1">Automática</option>
-          </select>
+      <!-- Card: Qualidade (oculto até existirem 2+ resoluções reais) -->
+      <div class="player__settings-card" id="qualityCard" style="display: none;">
+        <div class="player__settings-card-header">
+          <div class="player__settings-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="8" y1="12" x2="15" y2="12"></line><line x1="15" y1="12" x2="15" y2="16"></line><line x1="15" y1="12" x2="19" y2="9"></line></svg>
+          </div>
+          <div class="player__settings-card-header-text">
+            <div class="player__settings-card-title">Qualidade do vídeo</div>
+            <div class="player__settings-card-subtitle" id="qualitySummary">Automática</div>
+          </div>
+        </div>
+
+        <div class="player__settings-card-body">
+          <div class="player__quality-list" id="qualityList">
+            <button type="button" class="player__quality-btn is-active" data-level="-1" role="radio" aria-checked="true">
+              <span class="player__quality-btn-res">Auto</span>
+              <span class="player__quality-btn-sub">Adaptativo</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Seção: Avançado -->
-      <div class="player__settings-section" id="advancedSection">
-        <div class="player__settings-section-title">Avançado</div>
+      <!-- Card: Avançado -->
+      <div class="player__settings-card" id="advancedCard">
+        <div class="player__settings-card-header">
+          <div class="player__settings-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </div>
+          <div class="player__settings-card-header-text">
+            <div class="player__settings-card-title">Avançado</div>
+            <div class="player__settings-card-subtitle">Opções extras de reprodução</div>
+          </div>
+        </div>
 
-        <!-- Checkbox: Baixa Latência -->
-        <label class="player__settings-checkbox-label" id="lowLatencyLabel" style="display: none;">
-          <div class="player__settings-checkbox-wrapper">
-            <input type="checkbox" hidden class="player__settings-checkbox" id="lowLatencyCheckbox">
-            <span class="player__settings-checkbox-custom">
-              <jo class="jonabtn"></jo>
+        <div class="player__settings-card-body">
+          <label class="player__settings-switch-label" id="lowLatencyLabel" style="display: none;">
+            <div class="player__settings-switch-text">
+              <div class="player__settings-switch-title">Baixa Latência</div>
+              <div class="player__settings-switch-sub">Reduz o atraso ao vivo do stream</div>
+            </div>
+            <span class="player__settings-switch">
+              <input type="checkbox" hidden class="player__settings-checkbox" id="lowLatencyCheckbox">
+              <span class="player__settings-switch-track"></span>
             </span>
-            <div class="player__settings-checkbox-text">
-              <div class="player__settings-checkbox-title">Baixa Latência</div>
-            </div>
-          </div>
-        </label>
-
-        <!-- Checkbox: Estatísticas -->
-        <label class="player__settings-checkbox-label">
-          <div class="player__settings-checkbox-wrapper">
-            <input type="checkbox" hidden class="player__settings-checkbox" id="showStatsCheckbox">
-            <div class="player__settings-checkbox-text">
-              <div class="player__settings-checkbox-title">Estatísticas do Vídeo</div>
-            </div>
-          </div>
-        </label>
+          </label>
+        </div>
       </div>
 
     </div>

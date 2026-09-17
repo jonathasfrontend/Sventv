@@ -23,6 +23,7 @@ const PUBLIC_CHANNEL_KEYS = [
   'format',
   'encryption',
   'isLive',
+  'state',
 ];
 
 /**
@@ -36,6 +37,9 @@ const toPublicChannel = (channel) => {
   for (const key of PUBLIC_CHANNEL_KEYS) {
     if (key in channel) out[key] = channel[key];
   }
+  // Estado administrativo é sempre exposto (default live) para a UI poder
+  // sinalizar manutenção/bloqueio sem depender de campos internos.
+  if (!('state' in out)) out.state = 'live';
   return out;
 };
 

@@ -10,7 +10,10 @@
 
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const config = require('../config/app');
+const metrics = require('../utils/metrics');
 const { isDatabaseConnected, createDatabaseUnavailableError } = require('../utils/dbState');
+const { passwordPolicyErrors } = require('../utils/passwordPolicy');
 
 // ─────────────────────────────────────────────────────────────
 // Tipos de resposta (JSDoc apenas para DX)
@@ -38,15 +41,35 @@ const authService = {
   /**
    * Registra um novo usuário.
    *
-   * @param {{ name: string, email: string, password: string, avatar?: string }} data
+   * @param {{ name: string, email: string, password: string, confirmPassword?: string, acceptedTerms?: boolean, avatar?: string }} data
    * @returns {Promise<RegisterResult>}
    * @throws {Error} com propriedade `statusCode`
    */
-  async register({ name, email, password, avatar }) {
+  async register({ name, email, password, confirmPassword, acceptedTerms, avatar }) {
     if (!isDatabaseConnected()) {
       throw createDatabaseUnavailableError(
         'Serviço de autenticação temporariamente indisponível. Tente novamente em instantes.'
       );
+    }
+
+    // Defesas de serviço (independentes do middleware Joi — chamadas diretas)
+    if (password !== confirmPassword) {
+      const err = new Error('As senhas não coincidem.');
+      err.statusCode = 422;
+      throw err;
+    }
+    if (acceptedTerms !== true) {
+      const err = new Error('Você deve aceitar os Termos de Uso para criar uma conta.');
+      err.statusCode = 422;
+      throw err;
+    }
+
+    // Política de senha como defesa em profundidade (a rota já valida via Joi).
+    const policyErrors = passwordPolicyErrors(password);
+    if (policyErrors.length) {
+      const err = new Error(policyErrors[0]);
+      err.statusCode = 422;
+      throw err;
     }
 
     // Verifica duplicidade de e-mail
@@ -59,12 +82,28 @@ const authService = {
     }
 
     // Cria o usuário com senha hash e token de API inicial
-    const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      password,
-      avatar: avatar || '',
-    });
+    let user;
+    try {
+      user = await User.create({
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        password,
+        avatar: avatar || '',
+        termsAcceptedAt: new Date(),
+        termsVersion: config.terms.version,
+      });
+    } catch (err) {
+      // Corrida de registro: e-mail criado entre o pre-check e o insert
+      // (ConstraintError P2002 do Prisma na coluna unique email).
+      if (err && err.code === 'P2002' && String(err.meta?.target || '').includes('email')) {
+        const dup = new Error('Este e-mail já está cadastrado.');
+        dup.statusCode = 409;
+        throw dup;
+      }
+      throw err;
+    }
+
+    metrics.inc('termsAccepted');
 
     // Busca com apiToken para retorno no registro
     const userWithToken = await User.findByIdWithSensitive(user._id);
@@ -236,6 +275,14 @@ const authService = {
     if (!isValid) {
       const err = new Error('Senha atual incorreta.');
       err.statusCode = 401;
+      throw err;
+    }
+
+    // Política de senha como defesa em profundidade (a rota já valida via Joi).
+    const policyErrors = passwordPolicyErrors(newPassword);
+    if (policyErrors.length) {
+      const err = new Error(policyErrors[0]);
+      err.statusCode = 422;
       throw err;
     }
 

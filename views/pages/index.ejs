@@ -4,7 +4,7 @@
 <head><%- include('../partials/head', { title: 'SvenTV — API de Streaming M3U8' , cssFile: 'landing' }) %></head>
 
 <body>
-  <%- include('../partials/navbar', { user: locals.user || null, activePage: 'home' }) %>
+  <%- include('../partials/navbar', { user: locals.user || null, activePage: 'home', epgEnabled: locals.epgEnabled }) %>
     <%- include('../partials/flash') %>
 
       <section class="hero">
@@ -24,10 +24,9 @@
           <div class="hero-actions">
             <% if (locals.user) { %>
               <a href="/dashboard" class="btn btn-primary btn-lg">Abrir Dashboard →</a>
-              <a href="/docs" class="btn btn-ghost btn-lg">Ver Documentação</a>
               <% } else { %>
                 <a href="/register" class="btn btn-primary btn-lg">Começar Grátis →</a>
-                <a href="/docs" class="btn btn-ghost btn-lg">Ver Documentação</a>
+                <a href="/login" class="btn btn-ghost btn-lg">Já tenho conta</a>
                 <% } %>
           </div>
           <div class="hero-stats">

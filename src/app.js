@@ -20,8 +20,9 @@ const config = require('./config/app');
 const routes = require('./routes');
 const webRoutes = require('./routes/webRoutes');
 const M3UService = require('./services/m3uService');
+const ChannelStateService = require('./services/channelStateService');
 const { ensureDBConnection } = require('./config/database');
-const { errorHandler, notFound, requestLogger } = require('./middleware/errorHandler');
+const { errorHandler, notFound, requestLogger } = require('./middlewares/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
 const requestId = require('./middlewares/requestId');
 const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = require('./middlewares/security');
@@ -85,6 +86,11 @@ app.use((req, res, next) => {
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
 
+// Feature flag do Guia para o SSR (navbar, páginas). Mostra o link de /guia
+// quando o EPG está habilitado; EPG_URL ausente mantém a página acessível
+// (grade vazia) até a fonte ser configurada — kill switch é só EPG_ENABLED.
+app.locals.epgEnabled = Boolean(config.epg.enabled);
+
 app.use(cookieParser());
 app.use(
   session({
@@ -112,6 +118,7 @@ app.use('/Player', express.static(path.join(__dirname, 'Player')));
 // Páginas HTML não devem ser cacheadas pelo navegador (estado de
 // login sempre refletido no SSR).
 const sharedM3U = M3UService.getShared();
+const channelStates = ChannelStateService.getShared();
 app.use((req, res, next) => {
   if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
     res.setHeader('Cache-Control', 'no-store');
@@ -125,7 +132,16 @@ app.use(async (_req, _res, next) => {
       sharedM3U.ensureLoaded().catch((e) => {
         console.error('Falha ao carregar canais:', e.message);
       }),
+      // Hidrata o estado administrativo persistido (Postgres) no cold start.
+      channelStates.ensureLoaded().catch((e) => {
+        console.error('Falha ao carregar estados de canal:', e.message);
+      }),
     ]);
+    // Espelha o estado persistido nos objetos M3U (`channel.state` alimenta
+    // publicChannel/EPG/SSR). Sync: usa o cache já hidratado.
+    for (const ch of sharedM3U.getAllChannels()) {
+      ch.state = channelStates.peek(ch.id);
+    }
   } catch (_) { /* segue degradado; handlers tratam */ }
   next();
 });

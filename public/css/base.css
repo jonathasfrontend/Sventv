@@ -363,7 +363,7 @@ input, textarea, select { font-family: var(--font); }
 }
 
 .navbar-inner {
-  max-width: 1200px;
+  max-width: 90%;
   margin: 0 auto;
   padding: 0 20px;
   height: 64px;

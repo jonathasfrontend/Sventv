@@ -29,12 +29,21 @@ model User {
   sessionVersion  Int     @default(0) @map("session_version")
   accountRestricted Boolean @default(false) @map("account_restricted")
   restrictedReason String? @map("restricted_reason") @db.VarChar(255)
+  termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  termsVersion    String?   @map("terms_version") @db.VarChar(32)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   requestUsage  RequestUsage[]
   userRoles     UserRole[]
   roleRef       Role? @relation("UserRoleSingle", fields: [roleId], references: [id], onDelete: SetNull)
+  playbackSessions PlaybackSession[]
+  playbackEvents   PlaybackEvent[]
+  watchHistory     WatchHistory[]
+  playlists        Playlist[]
+  playlistChannels PlaylistChannel[]
+  userMetrics      UserMetric[]
+  passwordResetCodes PasswordResetCode[]
 
   @@index([status], map: "users_status_idx")
   @@index([role], map: "users_role_idx")
@@ -91,7 +100,7 @@ model AuditLog {
   action    String   @db.VarChar(80)
   userId    String?  @map("user_id") @db.Uuid
   email     String?  @db.VarChar(255)
-  ip        String?  @db.VarChar(64)
+  ip        String?  @map("ip") @db.VarChar(64)
   userAgent String?  @map("user_agent") @db.VarChar(512)
   requestId String?  @map("request_id") @db.VarChar(64)
   channelId String?  @map("channel_id") @db.VarChar(255)
@@ -102,4 +111,202 @@ model AuditLog {
   @@index([action], map: "audit_logs_action_idx")
   @@index([createdAt], map: "audit_logs_created_idx")
   @@map("audit_logs")
+}
+
+// ── Recuperação de senha ──────────────────────────────────────
+// Código de 6 dígitos por e-mail. NUNCA guarda o código puro — apenas o
+// SHA-256 (`code_hash`, hex 64). Único por fluxo (`used_at`), expira em
+// `expires_at` (~15min), com contador de tentativas (`attempts`, máx. 5).
+// Um novo pedido invalida pedidos anteriores (delete). Sem dados pessoais
+// além do vínculo com o usuário.
+model PasswordResetCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @map("code_hash") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  attempts  Int       @default(0)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt], map: "password_reset_codes_user_created_idx")
+  @@map("password_reset_codes")
+}
+
+// ── Analytics & Playlists ────────────────────────────────────
+// A sessão de reprodução identifica um player aberto (id gerado no
+// cliente). Transições discretas (play/pause/resume/stop/ended) viram
+// linhas em playback_events; heartbeats apenas atualizam a sessão —
+// isso mantém a tabela de eventos pequena e o watch time estimável.
+model PlaybackSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId        String    @unique @map("session_id") @db.VarChar(80)
+  userId           String    @map("user_id") @db.Uuid
+  channelId        String    @map("channel_id") @db.VarChar(255)
+  channelName      String?   @map("channel_name") @db.VarChar(255)
+  channelLogo      String?   @map("channel_logo") @db.VarChar(512)
+  channelCategory  String?   @map("channel_category") @db.VarChar(120)
+  status           String    @default("active") @db.VarChar(20)
+  startedAt        DateTime  @map("started_at") @db.Timestamptz(6)
+  lastHeartbeatAt  DateTime? @map("last_heartbeat_at") @db.Timestamptz(6)
+  pausedAt         DateTime? @map("paused_at") @db.Timestamptz(6)
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(6)
+  watchDurationMs  BigInt    @default(0) @map("watch_duration_ms")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events PlaybackEvent[]
+
+  @@index([userId, lastHeartbeatAt], map: "playback_sessions_user_hb_idx")
+  @@index([userId, startedAt], map: "playback_sessions_user_started_idx")
+  @@index([channelId, startedAt], map: "playback_sessions_channel_started_idx")
+  @@index([channelId, userId], map: "playback_sessions_channel_user_idx")
+  @@index([status, lastHeartbeatAt], map: "playback_sessions_status_hb_idx")
+  @@map("playback_sessions")
+}
+
+// Eventos discretos de reprodução (play/pause/resume/stop/ended).
+// Heartbeats NÃO geram linha nesta tabela (apenas atualizam a sessão).
+model PlaybackEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId       String   @map("session_id") @db.VarChar(80)
+  userId          String   @map("user_id") @db.Uuid
+  channelId       String   @map("channel_id") @db.VarChar(255)
+  event           String   @db.VarChar(20)
+  watchDurationMs BigInt   @default(0) @map("watch_duration_ms")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session PlaybackSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "playback_events_user_created_idx")
+  @@index([channelId, createdAt], map: "playback_events_channel_created_idx")
+  @@index([createdAt], map: "playback_events_created_idx")
+  @@index([sessionId], map: "playback_events_session_idx")
+  @@map("playback_events")
+}
+
+// Histórico consolidado: uma linha por (user, channel). Replay do mesmo
+// canal acumula playCount, sessionsCount e totalWatchMs — nunca duplica.
+model WatchHistory {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  channelId       String   @map("channel_id") @db.VarChar(255)
+  channelName     String?  @map("channel_name") @db.VarChar(255)
+  channelLogo     String?  @map("channel_logo") @db.VarChar(512)
+  channelCategory String?  @map("channel_category") @db.VarChar(120)
+  playCount       Int      @default(0) @map("play_count")
+  sessionsCount   Int      @default(0) @map("sessions_count")
+  totalWatchMs    BigInt   @default(0) @map("total_watch_ms")
+  lastPlayedAt    DateTime @map("last_played_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId], map: "watch_history_user_channel_unique")
+  @@index([userId, lastPlayedAt], map: "watch_history_user_lastplayed_idx")
+  @@map("watch_history")
+}
+
+// Playlist personalizada do usuário.
+model Playlist {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(80)
+  description String   @default("") @db.VarChar(280)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channels PlaylistChannel[]
+
+  @@index([userId, createdAt], map: "playlists_user_created_idx")
+  @@map("playlists")
+}
+
+// Canais de uma playlist. `userId` é denormalizado para garantir no banco
+// a regra de negócio: UM canal só pode pertencer a UMA playlist por usuário
+// (UNIQUE(userId, channelId) transcende a playlist). Canais não são
+// duplicados — apenas o ID + snapshot de exibição (nome/logo/categoria).
+model PlaylistChannel {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playlistId      String   @map("playlist_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  channelId       String   @map("channel_id") @db.VarChar(255)
+  channelName     String?  @map("channel_name") @db.VarChar(255)
+  channelLogo     String?  @map("channel_logo") @db.VarChar(512)
+  channelCategory String?  @map("channel_category") @db.VarChar(120)
+  position        Int      @default(0)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, channelId], map: "playlist_channels_plist_channel_unique")
+  @@unique([userId, channelId], map: "playlist_channels_user_channel_unique")
+  @@index([playlistId, position], map: "playlist_channels_plist_pos_idx")
+  @@map("playlist_channels")
+}
+
+// Métrica diária agregada por canal (alimentada por agregação idempotente
+// a partir de playback_sessions — nunca gravada por evento individual).
+model ChannelMetric {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId            String   @map("channel_id") @db.VarChar(255)
+  channelName          String?  @map("channel_name") @db.VarChar(255)
+  channelCategory      String?  @map("channel_category") @db.VarChar(120)
+  date                 DateTime @map("date") @db.Date
+  views                Int      @default(0)
+  uniqueViewers        Int      @default(0) @map("unique_viewers")
+  sessions             Int      @default(0)
+  totalWatchMs         BigInt   @default(0) @map("total_watch_ms")
+  avgSessionDurationMs BigInt   @default(0) @map("avg_session_duration_ms")
+  peakConcurrent       Int      @default(0) @map("peak_concurrent")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([channelId, date], map: "channel_metrics_channel_date_unique")
+  @@index([date], map: "channel_metrics_date_idx")
+  @@index([channelCategory, date], map: "channel_metrics_cat_date_idx")
+  @@map("channel_metrics")
+}
+
+// Métrica diária agregada por usuário (área administrativa).
+// ── Estado administrativo de canais ──────────────────────────
+// Persistência do estado (live | maintenance | blocked) aplicado pelo admin.
+// Canais em si NÃO ficam no banco (vêm da M3U), mas o estado administrativo
+// precisa sobreviver a restart/cold start — daí esta tabela: channelId é a
+// chave (PK direto, sem FK pois canais não são entidades de banco). Apenas
+// estados DIFERENTES de live ficam registrados (live = registro deletado),
+// mantendo a tabela pequena. O ChannelStateService mantém cache curto em
+// memória (CHANNEL_STATE_CACHE_TTL_MS) e faz read-through nesta tabela.
+model ChannelState {
+  channelId String   @id @map("channel_id") @db.VarChar(255)
+  state     String   @db.VarChar(20)
+  reason    String   @default("") @db.VarChar(255)
+  setBy     String?  @map("set_by") @db.VarChar(255)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([state, updatedAt], map: "channel_states_state_updated_idx")
+  @@map("channel_states")
+}
+
+model UserMetric {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  date          DateTime @map("date") @db.Date
+  sessions      Int      @default(0)
+  views         Int      @default(0)
+  totalWatchMs  BigInt   @default(0) @map("total_watch_ms")
+  channelsCount Int      @default(0) @map("channels_count")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date], map: "user_metrics_user_date_unique")
+  @@index([date], map: "user_metrics_date_idx")
+  @@map("user_metrics")
 }

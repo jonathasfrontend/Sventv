@@ -169,7 +169,7 @@ if (registerForm) {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, confirmPassword, acceptedTerms: terms }),
       });
       const data = await res.json();
 
@@ -181,6 +181,8 @@ if (registerForm) {
             if (err.field === 'email') setFieldError('email', 'emailError', err.message);
             if (err.field === 'name') setFieldError('name', 'nameError', err.message);
             if (err.field === 'password') setFieldError('password', 'passwordError', err.message);
+            if (err.field === 'confirmPassword') setFieldError('confirmPassword', 'confirmPasswordError', err.message);
+            if (err.field === 'acceptedTerms') setFieldError('terms', 'termsError', err.message);
           });
         }
         return;

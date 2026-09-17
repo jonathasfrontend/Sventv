@@ -2,8 +2,12 @@
 
 const express = require('express');
 const channelRoutes = require('./channelRoutes');
+const epgRoutes = require('./epgRoutes');
 const authRoutes = require('./authRoutes');
 const adminRoutes = require('./adminRoutes');
+const userRoutes = require('./userRoutes');
+const playbackRoutes = require('./playbackRoutes');
+const trendingRoutes = require('./trendingRoutes');
 
 const router = express.Router();
 
@@ -55,9 +59,14 @@ router.get('/info', (req, res) => {
       },
       admin: {
         page: 'GET /admin',
-        users: 'GET /api/admin/users',
+        users: 'GET /api/admin/users?page=&limit=&search=&status=',
+        userDetail: 'GET /api/admin/users/:userId',
         changeRole: 'PUT /api/admin/users/:userId/role',
         blockUser: 'PUT /api/admin/users/:userId/block',
+        updateProfile: 'PUT /api/admin/users/:userId/profile',
+        changePassword: 'POST /api/admin/users/:userId/password',
+        uploadAvatar: 'POST /api/admin/users/:userId/avatar',
+        deleteUser: 'DELETE /api/admin/users/:userId',
       },
     },
     timestamp: new Date().toISOString(),
@@ -70,7 +79,19 @@ router.use('/auth', authRoutes);
 // Rotas dos canais (todas protegidas por API token)
 router.use('/channels', channelRoutes);
 
+// Rotas do guia de programação (EPG — protegidas por API token)
+router.use('/epg', epgRoutes);
+
 // Painel administrativo
 router.use('/admin', adminRoutes);
+
+// Área pessoal (dashboard, histórico, playlists, recomendações)
+router.use('/', userRoutes);
+
+// Tendências (Top 10 — filmes/séries/programações em alta)
+router.use('/trending', trendingRoutes);
+
+// Ingestão de eventos de playback (transições + heartbeat)
+router.use('/playback', playbackRoutes);
 
 module.exports = router;

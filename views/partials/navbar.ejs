@@ -11,14 +11,16 @@
 
     <%# Links centrais %>
     <nav class="navbar-links">
-      <a href="/" class="nav-link <%= activePage === 'home' ? 'active' : '' %>">Início</a>
       <% if (user) { %>
         <a href="/dashboard" class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>">Dashboard</a>
+        <% if (typeof epgEnabled === 'undefined' || epgEnabled) { %>
+          <a href="/guia" class="nav-link <%= activePage === 'guia' ? 'active' : '' %>">Guia</a>
+        <% } %>
+        <a href="/playlists" class="nav-link <%= activePage === 'playlists' ? 'active' : '' %>">Playlists</a>
         <% if (user.role === 'admin') { %>
           <a href="/admin" class="nav-link <%= activePage === 'admin' ? 'active' : '' %>">Admin</a>
         <% } %>
       <% } %>
-      <a href="/docs" class="nav-link <%= activePage === 'docs' ? 'active' : '' %>">Documentação</a>
     </nav>
 
     <%# Ações à direita %>
@@ -47,11 +49,13 @@
 
   <%# Menu mobile %>
   <div class="navbar-mobile" id="navMobile">
-    <a href="/" class="nav-link-mobile">Início</a>
     <% if (user) { %>
       <a href="/dashboard" class="nav-link-mobile">Dashboard</a>
+      <% if (typeof epgEnabled === 'undefined' || epgEnabled) { %>
+        <a href="/guia" class="nav-link-mobile">Guia</a>
+      <% } %>
+      <a href="/playlists" class="nav-link-mobile">Playlists</a>
     <% } %>
-    <a href="/docs" class="nav-link-mobile">Documentação</a>
     <% if (user && user.role === 'admin') { %>
       <a href="/admin" class="nav-link-mobile">Admin</a>
     <% } %>

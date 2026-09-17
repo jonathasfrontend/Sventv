@@ -39,6 +39,8 @@ const mapRowToModel = (row, includeSensitive = false) => {
     sessionVersion: row.sessionVersion || 0,
     accountRestricted: includeSensitive ? Boolean(row.accountRestricted) : undefined,
     restrictedReason: includeSensitive ? row.restrictedReason || null : undefined,
+    termsAcceptedAt: row.termsAcceptedAt || null,
+    termsVersion: row.termsVersion || null,
     lastLogin: row.lastLogin || null,
     lastLoginIp: row.lastLoginIp || null,
     createdAt: row.createdAt,
@@ -58,6 +60,8 @@ const toPublicJson = (user) => {
     roleId: user.roleId || null,
     lastLogin: user.lastLogin,
     lastLoginIp: user.lastLoginIp,
+    termsAcceptedAt: user.termsAcceptedAt,
+    termsVersion: user.termsVersion,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -185,7 +189,7 @@ class User {
     );
   }
 
-  static async create({ name, email, password, avatar }) {
+  static async create({ name, email, password, avatar, termsAcceptedAt, termsVersion }) {
     const normalizedEmail = normalizeEmail(email);
 
     const rounds = config.security.bcryptRounds;
@@ -210,6 +214,8 @@ class User {
       accountRestricted: false,
       restrictedReason: null,
       apiToken: null,
+      termsAcceptedAt: termsAcceptedAt || null,
+      termsVersion: termsVersion || null,
     };
 
     let created;
@@ -287,6 +293,14 @@ class User {
       payload.roleId = normalized.roleId;
     }
 
+    if (normalized.termsAcceptedAt !== undefined) {
+      payload.termsAcceptedAt = normalized.termsAcceptedAt || null;
+    }
+
+    if (normalized.termsVersion !== undefined) {
+      payload.termsVersion = normalized.termsVersion || null;
+    }
+
     try {
       const data = await userRepository.updateById(userId, payload);
       return mapRowToModel(data, false);
@@ -294,6 +308,15 @@ class User {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
         return null;
       }
+      handleDbError(error);
+    }
+  }
+
+  static async findByEmail(email) {
+    try {
+      const row = await userRepository.findByEmail(email);
+      return mapRowToModel(row, false);
+    } catch (error) {
       handleDbError(error);
     }
   }

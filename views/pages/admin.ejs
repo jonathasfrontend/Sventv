@@ -2,13 +2,12 @@
 <html lang="pt-BR">
 <head><%- include('../partials/head', { title: 'Painel Administrativo — SvenTV', cssFile: 'admin' }) %></head>
 <body>
-<%- include('../partials/navbar', { user: locals.user, activePage: 'admin' }) %>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'admin', epgEnabled: locals.epgEnabled }) %>
 <%- include('../partials/flash') %>
 
 <main class="admin-main">
   <section class="admin-hero">
     <div>
-      <span class="badge badge-primary">Admin</span>
       <h1>Painel Administrativo</h1>
       <p>Gestão de métricas, canais e usuários da SvenTV.</p>
     </div>
@@ -30,6 +29,7 @@
       <div class="admin-kpi-card kpi-online"><span>Online</span><strong id="kpiOnline">—</strong></div>
       <div class="admin-kpi-card kpi-offline"><span>Offline</span><strong id="kpiOffline">—</strong></div>
       <div class="admin-kpi-card kpi-users"><span>Usuários</span><strong id="kpiUsers">—</strong></div>
+      <div class="admin-kpi-card kpi-viewers"><span>Espectadores agora</span><strong id="kpiViewers">—</strong></div>
     </div>
 
     <div class="admin-panel admin-metrics-panel">
@@ -49,6 +49,63 @@
         <div class="metric-card"><span class="metric-icon">▶️</span><div><span>Streams ativos</span><strong id="metricActiveStreams">—</strong></div></div>
         <div class="metric-card"><span class="metric-icon">📈</span><div><span>Pico streams</span><strong id="metricPeakStreams">—</strong></div></div>
         <div class="metric-card"><span class="metric-icon">⏱️</span><div><span>Latência média (ms)</span><strong id="metricAvgProxy">—</strong></div></div>
+      </div>
+    </div>
+
+    <div class="admin-panel admin-live-panel">
+      <div class="admin-panel-header">
+        <h2>Ao vivo agora</h2>
+        <div class="admin-panel-filters">
+          <span class="metrics-note">Sessões ativas por canal (heartbeat &lt; 90s)</span>
+          <button class="btn btn-ghost btn-sm" id="refreshLiveBtn">Atualizar</button>
+        </div>
+      </div>
+      <div class="admin-live-list" id="liveViewersList">
+        <p class="admin-analytics-empty">Carregando...</p>
+      </div>
+    </div>
+
+    <div class="admin-panel admin-analytics-panel">
+      <div class="admin-panel-header">
+        <h2>Analytics de Reprodução</h2>
+        <div class="admin-panel-filters">
+          <select id="analyticsPeriod" class="form-input">
+            <option value="today">Hoje</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="90d">Últimos 90 dias</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="loadAnalyticsBtn">Carregar</button>
+        </div>
+      </div>
+      <div class="admin-analytics-loading" id="analyticsLoading" hidden>Consultando agregados...</div>
+      <div id="analyticsBody" hidden>
+        <div class="admin-kpis admin-kpis--analytics" id="analyticsKpis"></div>
+        <div class="admin-analytics-grid">
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Top Canais</h3>
+            <div class="admin-analytics-list" id="analyticsTopChannels"></div>
+          </div>
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Por Categoria</h3>
+            <div class="admin-analytics-list" id="analyticsCategories"></div>
+          </div>
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Top Usuários</h3>
+            <div class="admin-analytics-list" id="analyticsTopUsers"></div>
+          </div>
+        </div>
+        <div class="admin-analytics-series">
+          <h3 class="admin-analytics-subtitle">Série por dia</h3>
+          <div class="admin-table-wrap">
+            <table class="admin-table admin-table--series">
+              <thead>
+                <tr><th>Dia</th><th>Sessões</th><th>Viewers únicos</th><th>Tempo total</th></tr>
+              </thead>
+              <tbody id="analyticsSeriesBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -102,6 +159,12 @@
         <select id="channelCategoryFilter" class="form-input">
           <option value="">Todas categorias</option>
         </select>
+        <select id="channelStateFilter" class="form-input">
+          <option value="">Todos os estados</option>
+          <option value="live">Ao vivo</option>
+          <option value="maintenance">Manutenção</option>
+          <option value="blocked">Bloqueado</option>
+        </select>
         <button class="btn btn-ghost btn-sm" id="checkAllChannelsBtn" title="Verificar saúde de todos os canais">Verificar tudo</button>
         <button class="btn btn-ghost btn-sm" id="reloadChannelsBtn" title="Recarregar lista de canais do arquivo M3U">Recarregar M3U</button>
       </div>
@@ -115,12 +178,13 @@
               <th>Categoria</th>
               <th>Formato</th>
               <th>Status</th>
+              <th>Estado</th>
               <th>Verificado</th>
               <th>Ações</th>
             </tr>
           </thead>
           <tbody id="channelsTableBody">
-            <tr><td colspan="7">Carregando canais...</td></tr>
+            <tr><td colspan="8">Carregando canais...</td></tr>
           </tbody>
         </table>
       </div>
@@ -133,33 +197,138 @@
       <div class="admin-panel-header">
         <div>
           <h2>Usuários</h2>
-          <p class="admin-panel-sub">Gestão de contas, papéis e status</p>
+          <p class="admin-panel-sub">Gestão de contas, papéis, status e permissões</p>
+        </div>
+        <div class="admin-panel-filters">
+          <span class="metrics-note" id="usersCountLabel"></span>
+          <button class="btn btn-ghost btn-sm" id="reloadUsersBtn">Recarregar</button>
         </div>
       </div>
+
       <div class="admin-filters-bar">
-        <input type="search" id="userSearch" class="form-input" placeholder="Buscar por nome ou e-mail">
-        <select id="roleFilter" class="form-input">
+        <input type="search" id="userSearch" class="form-input" placeholder="Buscar por nome ou e-mail" autocomplete="off">
+        <select id="roleFilter" class="form-input" aria-label="Filtrar por papel">
           <option value="">Todas as roles</option>
           <option value="user">user</option>
           <option value="admin">admin</option>
         </select>
+        <select id="statusFilter" class="form-input" aria-label="Filtrar por status">
+          <option value="">Todos os status</option>
+          <option value="active">Ativo</option>
+          <option value="inactive">Inativo</option>
+          <option value="banned">Banido</option>
+          <option value="pending">Pendente</option>
+        </select>
       </div>
 
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Usuário</th>
-              <th>Role</th>
-              <th>Plano</th>
-              <th>Status</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody id="usersTableBody">
-            <tr><td colspan="5">Carregando...</td></tr>
-          </tbody>
-        </table>
+      <div id="adminAlert" class="form-alert form-alert-error" hidden></div>
+
+      <div class="admin-users-grid" id="usersGrid">
+        <div class="admin-users-skeleton">Carregando usuários...</div>
+      </div>
+      <div class="admin-users-empty" id="usersEmpty" hidden>
+        <p>Nenhum usuário encontrado.</p>
+      </div>
+    </div>
+
+    <!-- Modal de usuário: detalhe + edição por seções -->
+    <div class="user-modal-overlay" id="userModalOverlay" hidden>
+      <div class="user-modal" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+        <div class="user-modal-head">
+          <div class="user-modal-avatar" id="userModalAvatarBox">
+            <div class="user-avatar user-avatar--lg user-avatar--fallback" id="userModalAvatarFallback"></div>
+          </div>
+          <div class="user-modal-heading">
+            <h2 id="userModalTitle">—</h2>
+            <span class="user-modal-email" id="userModalEmail"></span>
+            <div class="user-modal-badges" id="userModalBadges"></div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm user-modal-close" id="userModalClose" aria-label="Fechar modal">✕</button>
+        </div>
+
+        <div class="user-modal-body">
+          <section class="user-modal-section">
+            <h3>Avatar</h3>
+            <div class="user-modal-row">
+              <input type="file" id="userAvatarFile" class="form-input" accept="image/jpeg,image/png,image/webp,image/gif">
+              <button type="button" class="btn btn-ghost btn-sm" id="userAvatarSave">Enviar avatar</button>
+            </div>
+            <p class="user-modal-hint">JPG, PNG, WEBP ou GIF até 5 MB. SVG é recusado por segurança.</p>
+          </section>
+
+          <section class="user-modal-section">
+            <h3>Perfil</h3>
+            <div class="user-modal-form">
+              <label>Nome
+                <input type="text" id="userNameInput" class="form-input" maxlength="80" autocomplete="off">
+              </label>
+              <label>E-mail
+                <input type="email" id="userEmailInput" class="form-input" maxlength="254" autocomplete="off">
+              </label>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="userProfileSave">Salvar perfil</button>
+          </section>
+
+          <section class="user-modal-section">
+            <h3>Permissões</h3>
+            <div class="user-modal-form user-modal-form--row">
+              <label>Papel
+                <select id="userRoleSelect" class="form-input">
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="userRoleSave">Salvar papel</button>
+            <p class="user-modal-hint" id="userRoleSelfHint" hidden>Você não pode remover o papel de administrador da sua própria conta.</p>
+          </section>
+
+          <section class="user-modal-section">
+            <h3>Senha</h3>
+            <div class="user-modal-form">
+              <label>Nova senha
+                <input type="password" id="userPassInput" class="form-input" autocomplete="new-password">
+              </label>
+              <label>Confirmar nova senha
+                <input type="password" id="userPassConfirmInput" class="form-input" autocomplete="new-password">
+              </label>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="userPassSave">Redefinir senha</button>
+            <p class="user-modal-hint">Ao redefinir a senha, todas as sessões do usuário são encerradas.</p>
+          </section>
+
+          <section class="user-modal-section user-modal-section--danger">
+            <h3>Status da conta</h3>
+            <div class="user-modal-status-row">
+              <span class="user-status-pill" id="userStatusPill"></span>
+              <button type="button" class="btn btn-ghost btn-sm" id="userBlockBtn"></button>
+            </div>
+            <div class="user-confirm-box" id="userBlockConfirm" hidden>
+              <label>Motivo (opcional)
+                <input type="text" id="userBlockReason" class="form-input" maxlength="255" placeholder="Ex.: inadimplência, abuso">
+              </label>
+              <p class="user-modal-hint">Bloquear revoga tokens de API e derruba o acesso imediatamente.</p>
+              <div class="user-confirm-actions">
+                <button type="button" class="btn btn-danger btn-sm" id="userBlockConfirmBtn">Confirmar</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="userBlockCancelBtn">Cancelar</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="user-modal-section user-modal-section--danger">
+            <h3>Excluir conta</h3>
+            <div class="user-confirm-box">
+              <label class="user-check">
+                <input type="checkbox" id="userDeleteCheck">
+                Tenho ciência de que a exclusão é <strong>permanente e irreversível</strong> (histórico, playlists e registros de reprodução serão removidos).
+              </label>
+              <label for="userDeleteEmail">Digite o e-mail para confirmar
+                <input type="text" id="userDeleteEmail" class="form-input" autocomplete="off" placeholder="email@exemplo.com">
+              </label>
+              <button type="button" class="btn btn-danger" id="userDeleteBtn" disabled>Excluir conta permanentemente</button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   </section>
@@ -169,6 +338,7 @@
   user: locals.user || null
 }) %></script>
 <%- include('../partials/footer') %>
+<script src="/js/realtime.js"></script>
 <script src="/js/admin.js"></script>
 </body>
 </html>

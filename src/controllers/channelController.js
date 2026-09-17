@@ -1,11 +1,15 @@
 const M3UService = require('../services/m3uService');
+const EPGService = require('../services/epgService');
 const ChannelHealthService = require('../services/channelHealthService');
+const ChannelStateService = require('../services/channelStateService');
 const { issuePlaybackToken, openSealedTarget, sealTarget } = require('../services/streamTokenService');
 const { assertSafeTarget } = require('../services/ssrfGuard');
 const { audit } = require('../services/auditService');
 const { inc, snapActiveStream, recordProxyLatency } = require('../utils/metrics');
 const { acquireSlot, releaseSlot } = require('../middlewares/streamLimiter');
 const { toPublicChannel, toPublicChannels } = require('../utils/publicChannel');
+const { safeScriptJson } = require('../utils/safeScriptJson');
+const config = require('../config/app');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -21,6 +25,7 @@ class ChannelController {
   constructor() {
     // Instância única compartilhada (1 download por lambda)
     this.m3uService = M3UService.getShared();
+    this.epgService = EPGService.getShared();
 
     // Agentes do proxy: quando o host já é um IP literal, pula a
     // resolução DNS — resolvers em ambientes serverless podem falhar
@@ -48,11 +53,19 @@ class ChannelController {
 
     // Serviço de verificação de saúde dos canais
     try {
-      this.channelHealthService = new ChannelHealthService(this.m3uService);
+      this.channelHealthService = new ChannelHealthService(this.m3uService, {
+        intervalMs: config.health.checkIntervalMs,
+        requestTimeout: config.health.requestTimeoutMs,
+        failoverThreshold: config.health.failoverThreshold,
+        failbackMinMs: config.health.failbackMinMs,
+      });
     } catch (e) {
       this.channelHealthService = null;
       console.error('Erro ao inicializar ChannelHealthService:', e && e.message);
     }
+
+    // Estado administrativo (live/maintenance/blocked) — singleton em memória
+    this.channelStateService = ChannelStateService.getShared();
   }
 
   /**
@@ -142,7 +155,7 @@ class ChannelController {
    * @param {Object} req - Request object
    * @param {Object} res - Response object
    */
-  getChannelStream = (req, res) => {
+  getChannelStream = async (req, res) => {
     try {
       const { id } = req.params;
       const channel = this.m3uService.getChannelById(id);
@@ -155,7 +168,7 @@ class ChannelController {
       }
 
       // Retorna HTML com player para iframe
-      const playerHtml = this.generatePlayerHTML(channel, req.authToken || req.apiToken || req.query.token || '');
+      const playerHtml = await this.generatePlayerHTML(channel, req.authToken || req.apiToken || req.query.token || '');
 
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
@@ -191,6 +204,28 @@ class ChannelController {
         return res.status(404).json({
           success: false,
           message: 'Canal não encontrado'
+        });
+      }
+
+      // Gating de estado administrativo ANTES de emitir token/upstream.
+      const state = this.channelStateService ? await this.channelStateService.get(id) : 'live';
+      if (state !== 'live') {
+        inc('streamBlocked');
+        audit({
+          action: 'stream.playback_blocked',
+          req,
+          userId: req.user?.id,
+          channelId: id,
+          meta: { state },
+        });
+        const blocked = state === 'blocked';
+        return res.status(blocked ? 403 : 503).json({
+          success: false,
+          message: blocked
+            ? 'Canal bloqueado.'
+            : 'Canal em manutenção. Tente novamente mais tarde.',
+          data: { channelId: id, state },
+          timestamp: new Date().toISOString()
         });
       }
 
@@ -360,6 +395,8 @@ class ChannelController {
   reloadChannels = async (req, res) => {
     try {
       await this.m3uService.reloadChannels();
+      // Recalcula o matching EPG↔M3U após a lista ser substituída.
+      this.epgService.rebuildMatching();
 
       res.status(200).json({
         success: true,
@@ -412,20 +449,68 @@ class ChannelController {
   };
 
   /**
-   * Gera HTML do player para uso em iframe
+   * Generates string HTML do player para uso em iframe
    * @param {Object} channel - Dados do canal
-   * @returns {string} - HTML do player
+   * @param {string} token - Token de autenticação
+   * @returns {Promise<string>} - HTML do player
    */
-  generatePlayerHTML(channel, token = '') {
+  async generatePlayerHTML(channel, token = '') {
     // O player consome o stream via proxy HTTPS da própria API,
     // evitando Mixed Content quando a origem é apenas HTTP.
     const proxyUrl = `/api/channels/${encodeURIComponent(channel.id)}/proxy?token=${encodeURIComponent(token)}`;
+    const state = this.channelStateService ? await this.channelStateService.get(channel.id) : 'live';
 
-    // Substitui placeholders no template
+    // EPG do player — fornecido AQUI (server-side), nunca buscado pelo
+    // navegador durante a reprodução. Janela "agora − 1h → agora + 12h".
+    // Fail-open: falha/desativado/sem match → [] (player continua normal).
+    // Não bloqueia a geração: lê o cache atual imediatamente e aquece o
+    // refresh (se necessário) em background para os próximos players.
+    const epg = await this.getPlayerEpg(channel.id);
+
+    // Substitui placeholders no template. CHANNEL_ID/CHANNEL_CATEGORY
+    // alimentam o módulo de analytics do player; os dados vão dentro de um
+    // objeto JS — escapeHtml cobre '"'\'.
+    // CHANNEL_STATE permite o player exibir overlay de manutenção/bloqueio
+    // em vez de tentar reproduzir indefinidamente.
+    // CHANNEL_EPG_JSON é um literal JSON de TEXTO externo (XMLTV) inserido
+    // dentro do <script> — serialização segura (safeScriptJson) neutraliza
+    // `</script>`/`<!--`/U+2028 antes de entrar no HTML.
     return this.playerTemplate
+      .replace(/\{\{CHANNEL_ID\}\}/g, this.escapeHtml(channel.id))
       .replace(/\{\{CHANNEL_NAME\}\}/g, this.escapeHtml(channel.name))
       .replace(/\{\{CHANNEL_URL\}\}/g, this.escapeHtml(proxyUrl))
       .replace(/\{\{CHANNEL_LOGO\}\}/g, this.escapeHtml(channel.logo || ''))
+      .replace(/\{\{CHANNEL_CATEGORY\}\}/g, this.escapeHtml(channel.category || ''))
+      .replace(/\{\{CHANNEL_FORMAT\}\}/g, this.escapeHtml(channel.format || ''))
+      .replace(/\{\{CHANNEL_STATE\}\}/g, this.escapeHtml(state))
+      .replace(/\{\{CHANNEL_EPG_JSON\}\}/g, safeScriptJson(epg));
+  }
+
+  /**
+   * Janela de EPG para o player (agora − 1h → agora + 12h).
+   *
+   * Nunca lança: qualquer falha (serviço desativado, sem match, cache
+   * vazio, erro inesperado) devolve [] — o EPG é complementar ao stream.
+   * A chamada de aquecimento (ensureLoaded) é fire-and-forget para não
+   * atrasar a geração do HTML do player num cold start com EPG sem cache.
+   */
+  async getPlayerEpg(channelId) {
+    try {
+      const svc = this.epgService;
+      if (!svc || !svc.isEnabled || !svc.isEnabled()) return [];
+      const now = Date.now();
+      const from = now - PLAYER_EPG_PAST_MS; // 1h para trás
+      const to = now + PLAYER_EPG_FUTURE_MS; // 12h adiante
+
+      // Aquece o cache sem bloquear (nunca rejeita internamente).
+      const warm = svc.ensureLoaded ? svc.ensureLoaded() : null;
+      if (warm && typeof warm.then === 'function') warm.catch(() => {});
+
+      const programmes = svc.getPlayerWindow ? svc.getPlayerWindow(channelId, from, to) : [];
+      return Array.isArray(programmes) ? programmes : [];
+    } catch (_) {
+      return [];
+    }
   }
 
   /**
@@ -510,6 +595,21 @@ class ChannelController {
         });
       }
 
+      // Gating de estado administrativo: bloqueia ANTES de consumir slot,
+      // iniciar saúde ou acessar o upstream.
+      const channelState = this.channelStateService ? await this.channelStateService.get(id) : 'live';
+      if (channelState !== 'live') {
+        inc('streamBlocked');
+        const blocked = channelState === 'blocked';
+        return res.status(blocked ? 403 : 503).json({
+          success: false,
+          message: blocked
+            ? 'Canal bloqueado.'
+            : 'Canal em manutenção. Tente novamente mais tarde.',
+          data: { channelId: id, state: channelState },
+        });
+      }
+
       const isInitialRequest = !req.query.p;
 
       // Limite de streams simultâneos por usuário (apenas na requisição
@@ -533,6 +633,8 @@ class ChannelController {
 
       // Alvo: canal principal (sem ?p) ou sub-recurso selado (?p=...)
       let rawTarget;
+      // Fontes candidatas (só na requisição inicial): [ativa, alternativa].
+      let sourceCandidates = null;
 
       // Parâmetro legado ?u=<url> foi removido por segurança: rejeita
       // explicitamente para deixar o contrato claro (era vetor de SSRF).
@@ -555,7 +657,13 @@ class ChannelController {
 
         rawTarget = opened.url;
       } else {
-        rawTarget = channel.url;
+        // Failover automático: a fonte ativa vem primeiro e a alternativa em
+        // seguida. Sub-recursos (?p=...) NÃO fazem failover — o blob está
+        // amarrado à URL exata que os originou.
+        if (this.channelHealthService) {
+          sourceCandidates = this.channelHealthService.resolveSourceUrls(channel);
+        }
+        rawTarget = (sourceCandidates && sourceCandidates[0]) || channel.url;
       }
 
       let targetUrl;
@@ -641,22 +749,58 @@ class ChannelController {
       };
 
       const fetchStart = Date.now();
-      const doFetch = () => fetchWithRedirects(targetUrl, req.headers.range, 5);
 
-      for (let attempt = 0; attempt < 2; attempt++) {
+      // Requisição inicial: tenta a fonte ativa e, se falhar por rede, a
+      // alternativa (failover). Cada hop continua revalidado pela guarda SSRF.
+      const candidates = (sourceCandidates && sourceCandidates.length)
+        ? sourceCandidates
+        : [targetUrl.toString()];
+      let usedCandidateIndex = 0;
+      let usedTargetUrl = targetUrl;
+
+      for (let i = 0; i < candidates.length && !upstream; i++) {
+        let candidateUrl;
         try {
-          const result = await doFetch();
-          upstream = result.response;
-          netError = null;
-          break;
-        } catch (e) {
-          netError = e;
-          if (e.code === 'SSRF_BLOCKED') break;
-          if (attempt === 0) {
-            await new Promise((r) => setTimeout(r, 300));
+          candidateUrl = new URL(candidates[i]);
+        } catch {
+          continue;
+        }
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const result = await fetchWithRedirects(candidateUrl, req.headers.range, 5);
+            upstream = result.response;
+            usedTargetUrl = result.targetUrl;
+            usedCandidateIndex = i;
+            netError = null;
+            break;
+          } catch (e) {
+            netError = e;
+            if (e.code === 'SSRF_BLOCKED') break;
+            if (attempt === 0) {
+              await new Promise((r) => setTimeout(r, 300));
+            }
           }
         }
+
+        // Segurança: SSRF bloqueado nunca tenta a fonte alternativa.
+        if (netError && netError.code === 'SSRF_BLOCKED') break;
       }
+
+      // Observabilidade do failover: usou uma fonte diferente da preferida.
+      if (upstream && candidates.length > 1 && usedCandidateIndex > 0) {
+        inc('proxyFailovers');
+      }
+      if (this.channelHealthService) {
+        if (upstream) {
+          this.channelHealthService.reportResult(id, candidates[usedCandidateIndex], true);
+        } else if (candidates[0]) {
+          this.channelHealthService.reportResult(id, candidates[0], false);
+        }
+      }
+
+      // Mantém as mensagens/reescrita abaixo referenciando a URL efetiva.
+      if (upstream) targetUrl = usedTargetUrl;
       recordProxyLatency(Date.now() - fetchStart);
 
       if (netError && netError.code === 'SSRF_BLOCKED') {
@@ -747,5 +891,12 @@ class ChannelController {
   }
 
 }
+
+const HOUR_MS = 60 * 60 * 1000;
+// Janela de EPG embutida no player: 1h no passado (programa corrente se
+// estendeu antes de agora) e 12h adiante (próximos programas suficientes
+// para a UI "agora / próximo / progresso" sem payload excessivo).
+const PLAYER_EPG_PAST_MS = HOUR_MS;
+const PLAYER_EPG_FUTURE_MS = 12 * HOUR_MS;
 
 module.exports = ChannelController;

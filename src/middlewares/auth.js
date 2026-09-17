@@ -47,6 +47,39 @@ const extractToken = (req) => {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Valida um session token (JWT_SECRET) e retorna `{ user }` ou
+ * `{ error: { status, message } }`. Compartilhado por requireSessionAuth
+ * e requireSessionOrApi.
+ * @param {string} token
+ */
+const validateSessionToken = async (token) => {
+  if (!token) return { error: { status: 401, message: 'Acesso não autorizado. Token de sessão ausente.' } };
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, config.jwt.secret);
+  } catch (err) {
+    const msg =
+      err.name === 'TokenExpiredError'
+        ? 'Sessão expirada. Faça login novamente.'
+        : 'Token de sessão inválido.';
+    return { error: { status: 401, message: msg } };
+  }
+
+  const user = await User.findById(decoded.id);
+  if (!user) return { error: { status: 401, message: 'Usuário não encontrado.' } };
+
+  // Revogação server-side: logout/troca de senha incrementam sessionVersion
+  if (typeof decoded.sv === 'number' && decoded.sv !== (user.sessionVersion || 0)) {
+    return { error: { status: 401, message: 'Sessão revogada. Faça login novamente.' } };
+  }
+  if (user.status !== 'active') {
+    return { error: { status: 403, message: `Conta ${user.status}. Entre em contato com o suporte.` } };
+  }
+  return { user };
+};
+
+/**
  * Protege rotas que exigem login no painel (session token).
  * Injeta `req.user` com os dados do usuário autenticado.
  */
@@ -60,55 +93,66 @@ const requireSessionAuth = async (req, res, next) => {
     }
 
     const token = extractToken(req);
+    const { user, error } = await validateSessionToken(token);
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Acesso não autorizado. Token de sessão ausente.',
-      });
-    }
-
-    // Verifica assinatura e expiração
-    let decoded;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret);
-    } catch (err) {
-      const msg =
-        err.name === 'TokenExpiredError'
-          ? 'Sessão expirada. Faça login novamente.'
-          : 'Token de sessão inválido.';
-      return res.status(401).json({ success: false, message: msg });
-    }
-
-    // Busca o usuário no banco
-    const user = await User.findById(decoded.id);
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuário não encontrado.',
-      });
-    }
-
-    // Revogação server-side: logout/troca de senha incrementam sessionVersion
-    if (typeof decoded.sv === 'number' && decoded.sv !== (user.sessionVersion || 0)) {
-      return res.status(401).json({
-        success: false,
-        message: 'Sessão revogada. Faça login novamente.',
-      });
-    }
-
-    if (user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: `Conta ${user.status}. Entre em contato com o suporte.`,
-      });
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
     }
 
     req.user = user;
     next();
   } catch (error) {
     logger.error(`[auth.requireSessionAuth] ${error.message}`);
+    next(error);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Middleware: Sessão OU API token
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Protege as rotas /api/user/* e /api/dashboard: aceita session token
+ * (painel web, cookie httpOnly) OU API token (apps/dispositivos).
+ * Tenta sessão primeiro (mais comum no painel), depois API.
+ * Injeta `req.user` e `req.authKind` ('session' | 'api').
+ */
+const requireSessionOrApi = async (req, res, next) => {
+  try {
+    if (!isDatabaseConnected()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Serviço de autenticação temporariamente indisponível. Tente novamente em instantes.',
+      });
+    }
+
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Acesso não autorizado. Token de sessão ou API ausente.',
+      });
+    }
+
+    // Caminho 1: session token do painel
+    const session = await validateSessionToken(token);
+    if (!session.error) {
+      req.user = session.user;
+      req.authKind = 'session';
+      return next();
+    }
+
+    // Caminho 2: API token de aplicações
+    const { user, error } = await validateApiToken(token);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    req.user = user;
+    req.apiToken = token;
+    req.authKind = 'api';
+    next();
+  } catch (error) {
+    logger.error(`[auth.requireSessionOrApi] ${error.message}`);
     next(error);
   }
 };
@@ -235,6 +279,37 @@ const requireApiAuth = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Carrega e valida o usuário de um playback token decodificado
+ * (reutilizado por requireStreamAccess e requireEventAuth).
+ * @param {object} decoded payload do JWT de playback
+ * @returns {Promise<{user?: object, error?: {status: number, message: string}}>}
+ */
+const resolvePlaybackUser = async (decoded) => {
+  const user = await User.findByIdWithSensitive(decoded.id);
+  if (!user) return { error: { status: 401, message: 'Usuário não encontrado.' } };
+  if (user.status !== 'active') {
+    return { error: { status: 403, message: `Conta ${user.status}. Entre em contato com o suporte.` } };
+  }
+  if (user.accountRestricted) {
+    return {
+      error: {
+        status: 403,
+        message: user.restrictedReason || 'Conta restrita por pendencia de pagamento.',
+      },
+    };
+  }
+  if (user.apiTokenActive === false) {
+    return {
+      error: {
+        status: 401,
+        message: 'Acesso à transmissão desativado. Regularize o pagamento para reativar.',
+      },
+    };
+  }
+  return { user };
+};
+
+/**
  * Protege as rotas de reprodução (/stream e /proxy).
  * Aceita:
  *  - API token permanente (compatibilidade com clientes externos da API), ou
@@ -285,7 +360,7 @@ const requireStreamAccess = async (req, res, next) => {
       });
     }
 
-    const channelId = req.params.id || req.params.channelId;
+    const channelId = req.params.id || req.params.channelId || req.body?.channelId;
 
     if (!channelId || decoded.ch !== channelId) {
       return res.status(403).json({
@@ -294,31 +369,9 @@ const requireStreamAccess = async (req, res, next) => {
       });
     }
 
-    const user = await User.findByIdWithSensitive(decoded.id);
-
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Usuário não encontrado.' });
-    }
-
-    if (user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: `Conta ${user.status}. Entre em contato com o suporte.`,
-      });
-    }
-
-    if (user.accountRestricted) {
-      return res.status(403).json({
-        success: false,
-        message: user.restrictedReason || 'Conta restrita por pendencia de pagamento.',
-      });
-    }
-
-    if (user.apiTokenActive === false) {
-      return res.status(401).json({
-        success: false,
-        message: 'Acesso à transmissão desativado. Regularize o pagamento para reativar.',
-      });
+    const { user, error } = await resolvePlaybackUser(decoded);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
     }
 
     req.user = user;
@@ -327,6 +380,84 @@ const requireStreamAccess = async (req, res, next) => {
     next();
   } catch (error) {
     logger.error(`[auth.requireStreamAccess] ${error.message}`);
+    next(error);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Middleware: Ingestão de eventos de playback
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Protege as rotas POST /api/playback/events e /api/playback/heartbeat.
+ * Aceita session token (cookie do painel), API token (apps) OU playback
+ * token do canal (player web/iframe) — qualquer identidade válida que o
+ * navegador tenha à mão.
+ *
+ * Para playback token, o canal é lido de req.body.channelId (o body é
+ * preservado intacto: sanitizeXss não altera ids sha1 hex).
+ *
+ * Injeta `req.user` e `req.authKind` ('session' | 'api' | 'playback').
+ */
+const requireEventAuth = async (req, res, next) => {
+  try {
+    if (!isDatabaseConnected()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Serviço de autenticação temporariamente indisponível. Tente novamente em instantes.',
+      });
+    }
+
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token de acesso obrigatório para eventos de reprodução.',
+      });
+    }
+
+    // Caminho 1: session token (painel web)
+    const session = await validateSessionToken(token);
+    if (!session.error) {
+      req.user = session.user;
+      req.authKind = 'session';
+      return next();
+    }
+
+    // Caminho 2: API token permanente
+    const api = await validateApiToken(token);
+    if (!api.error) {
+      req.user = api.user;
+      req.apiToken = token;
+      req.authKind = 'api';
+      return next();
+    }
+
+    // Caminho 3: playback token curto vinculado ao canal do evento
+    const decoded = verifyPlaybackToken(token);
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token de acesso inválido ou expirado para eventos de reprodução.',
+      });
+    }
+    const channelId = req.body?.channelId;
+    if (!channelId || decoded.ch !== channelId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Playback token não é válido para este canal.',
+      });
+    }
+    const { user, error } = await resolvePlaybackUser(decoded);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    req.user = user;
+    req.authToken = token;
+    req.authKind = 'playback';
+    next();
+  } catch (error) {
+    logger.error(`[auth.requireEventAuth] ${error.message}`);
     next(error);
   }
 };
@@ -360,5 +491,10 @@ module.exports = {
   requireSessionAuth,
   requireApiAuth,
   requireStreamAccess,
+  requireEventAuth,
+  requireSessionOrApi,
   requireRole,
+  validateSessionToken,
+  validateApiToken,
+  extractToken,
 };

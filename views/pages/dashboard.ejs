@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head><%- include('../partials/head', { title: 'Dashboard — SvenTV', cssFile: 'dashboard' }) %></head>
 <body>
-<%- include('../partials/navbar', { user: locals.user, activePage: 'dashboard' }) %>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'dashboard', epgEnabled: locals.epgEnabled }) %>
 <%- include('../partials/flash') %>
 
 <main class="dashboard-main">
@@ -48,6 +48,107 @@
     </div>
   </div>
 
+  <!-- ── Pessoal: recentes / playlists / recomendações ────── -->
+  <div class="personal-sections" id="personalSections">
+
+    <section class="personal-block personal-block--trending" id="trendingMoviesBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Filmes em alta</h2>
+        <span class="personal-note">Top 10 mais assistidos do catálogo</span>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="trendingMoviesList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="personal-block personal-block--trending" id="trendingSeriesBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Séries em alta</h2>
+        <span class="personal-note">Top 10 mais assistidas do catálogo</span>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="trendingSeriesList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="personal-block personal-block--trending" id="trendingChannelsBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Ao vivo em alta</h2>
+        <span class="personal-note">Programações mais assistidas agora</span>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="trendingChannelsList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="personal-block" id="recentBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Assistidos recentemente</h2>
+        <a class="personal-link" href="/playlists">Ver playlists</a>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="recentList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="personal-block" id="playlistBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Minhas playlists</h2>
+        <a class="personal-link" href="/playlists">Gerenciar</a>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="playlistList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="personal-block personal-block--reco" id="recoBlock" hidden>
+      <div class="personal-header">
+        <h2 class="personal-title">Recomendados para você</h2>
+        <span class="personal-note">Com base no que você assiste</span>
+      </div>
+      <div class="carousel" data-carousel>
+        <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-prev aria-label="Anteriores">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <div class="personal-cards" id="recoList"></div>
+        <button type="button" class="carousel__btn carousel__btn--next" data-carousel-next aria-label="Próximos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </section>
+
+  </div>
+
   <!-- ── Channel grid ──────────────────────────────────────── -->
   <div id="channelGrid" class="channel-grid">
     <!-- Skeletons de carregamento -->
@@ -83,6 +184,7 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="copyUrlBtn">📋 Copiar Embed</button>
+        <button class="btn btn-ghost btn-sm" id="saveToPlaylistBtn" title="Salvar na playlist">💾 Salvar</button>
         <button class="modal-close" id="modalClose" aria-label="Fechar">✕</button>
       </div>
     </div>
@@ -104,6 +206,20 @@
         <button class="btn btn-ghost btn-sm" id="retryBtn">Tentar novamente</button>
       </div>
     </div>
+    <!-- Painel: salvar na playlist -->
+    <div class="save-panel" id="savePanel" hidden>
+      <div class="save-panel-header">
+        <strong>Salvar em uma playlist</strong>
+        <div class="save-panel-msg" id="savePanelMsg" hidden></div>
+      </div>
+      <div class="save-panel-body">
+        <select id="savePlaylistSelect" class="form-input"></select>
+        <div class="save-panel-new">
+          <input id="saveNewPlaylistName" class="form-input" placeholder="Ou crie uma playlist nova..." maxlength="80">
+          <button class="btn btn-primary btn-sm" id="saveChannelBtn">Salvar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -116,6 +232,7 @@
   totalChannels: locals.totalChannels || 0
 }) %></script>
 <%- include('../partials/footer') %>
+<script src="/js/realtime.js"></script>
 <script src="/js/dashboard.js"></script>
 </body>
 </html>

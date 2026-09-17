@@ -17,7 +17,7 @@ class M3UService {
       // path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u'),
 
       // ── URLs externas (ativas) ────────────────────────────────
-      'https://github.com/jonathasfrontend/Sventv/releases/download/LISTAIPTV/SvenTvChannelsBACKUP.m3u'
+      './SvenTvChannelsBACKUP.m3u'
 
       // Outras urls externas, ex:
       // 'https://raw.githubusercontent.com/helenfernanda/gratis/main/iptvlegal.m3u'
@@ -125,6 +125,14 @@ class M3UService {
         } else if ((line.startsWith('http') || line.startsWith('https')) && currentChannel.name) {
           currentChannel.url = line;
           currentChannel.source = fileName;
+          // Estado administrativo padrão (live). `maintenance`/`blocked` são
+          // definidos em runtime pelo ChannelStateService (persistido em
+          // Postgres + cache curto em memória).
+          currentChannel.state = 'live';
+          // Fontes para failover: `primaryUrl` é a primeira ocorrência; a
+          // segunda entrada distinta vira `backupUrl` no removeDuplicates().
+          currentChannel.urls = [line];
+          currentChannel.primaryUrl = line;
           // Gera ID determinístico baseado em nome + fonte + índice para estabilidade
           currentChannel.id = this.generateChannelId(currentChannel.name, channelCount, currentChannel.source);
           currentChannel.slug = this.generateSlug(currentChannel.name);
@@ -304,21 +312,42 @@ class M3UService {
   }
 
   /**
-   * Remove canais duplicados
+   * Remove canais duplicados (mesmo cleanName + qualidade).
+   *
+   * A primeira ocorrência é mantida como canal principal. URLs distintas de
+   * ocorrências seguintes são agregadas como fonte secundária (`backupUrl`)
+   * para failover automático — `url` e `primaryUrl` continuam apontando para
+   * a fonte primária por compatibilidade.
    */
   removeDuplicates() {
-    const seen = new Set();
-    const uniqueChannels = [];
-    
+    const firstByKey = new Map();
+
     this.channels.forEach(channel => {
       const key = `${channel.cleanName || channel.name}_${channel.quality}`.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        uniqueChannels.push(channel);
+      const existing = firstByKey.get(key);
+
+      if (!existing) {
+        channel.primaryUrl = channel.primaryUrl || channel.url || (channel.urls && channel.urls[0]) || null;
+        channel.urls = channel.urls && channel.urls.length ? channel.urls : (channel.url ? [channel.url] : []);
+        firstByKey.set(key, channel);
+        return;
+      }
+
+      // Ocorrência duplicada: agrega URL distinta como fonte de reserva
+      const candidate = channel.url || (channel.urls && channel.urls[0]) || null;
+      if (!candidate) return;
+
+      existing.urls = existing.urls && existing.urls.length ? existing.urls : (existing.url ? [existing.url] : []);
+      if (!existing.urls.includes(candidate)) {
+        existing.urls.push(candidate);
+        if (!existing.backupUrl && candidate !== (existing.url || existing.primaryUrl)) {
+          existing.backupUrl = candidate;
+          existing.backupSource = channel.source || existing.source || null;
+        }
       }
     });
-    
-    this.channels = uniqueChannels;
+
+    this.channels = [...firstByKey.values()];
   }
 
   /**

@@ -40,6 +40,28 @@
     <!-- Elemento de vídeo -->
     <video class="player__video" id="videoElement" autoplay muted playsinline preload="none" x-webkit-airplay="deny"></video>
 
+    <!-- Marca d'água (não clicável, derivada da sessão) -->
+    <div class="player__watermark" id="watermark" aria-hidden="true"></div>
+
+    <!-- Barra de EPG (agora / próximo / progresso) — dados embutidos
+         server-side em CHANNEL_DATA.epg; nunca busca rede durante a
+         reprodução. Fica acima dos controles e segue o mesmo ciclo
+         visual de exibir/esconder. -->
+    <div class="player__epg-bar" id="epgBar" hidden>
+      <div class="player__epg-now">
+        <span class="player__epg-label">Passando agora</span>
+        <span class="player__epg-title" id="epgNowTitle"></span>
+      </div>
+      <div class="player__epg-progress" role="presentation" aria-hidden="true">
+        <div class="player__epg-progress-fill" id="epgProgressFill"></div>
+      </div>
+      <div class="player__epg-next">
+        <span class="player__epg-label">Próximo</span>
+        <span class="player__epg-title" id="epgNextTitle"></span>
+        <span class="player__epg-time" id="epgNextTime"></span>
+      </div>
+    </div>
+
     <!-- Controles customizados -->
     <div class="player__controls" id="controls">
       <div class="player__controls-wrapper">
@@ -67,12 +89,8 @@
 
         </div>
 
-        <!-- Direita: Settings + PiP + Fullscreen -->
+        <!-- Direita: PiP + Fullscreen -->
         <div class="player__controls-right">
-          <button class="player__btn" id="settingsBtn" title="Configurações">
-            <img src="/Player/assets/icons/gear.svg" class="player__icon">
-          </button>
-
           <button class="player__btn" id="pipBtn" title="Picture in Picture">
             <img src="/Player/assets/icons/rectangle.svg" class="player__icon">
           </button>
@@ -85,71 +103,24 @@
       </div>
     </div>
 
-    <!-- Menu de Configurações -->
-    <div class="player__settings-menu" id="settingsMenu">
-
-      <!-- Card: Qualidade (oculto até existirem 2+ resoluções reais) -->
-      <div class="player__settings-card" id="qualityCard" style="display: none;">
-        <div class="player__settings-card-header">
-          <div class="player__settings-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="8" y1="12" x2="15" y2="12"></line><line x1="15" y1="12" x2="15" y2="16"></line><line x1="15" y1="12" x2="19" y2="9"></line></svg>
-          </div>
-          <div class="player__settings-card-header-text">
-            <div class="player__settings-card-title">Qualidade do vídeo</div>
-            <div class="player__settings-card-subtitle" id="qualitySummary">Automática</div>
-          </div>
-        </div>
-
-        <div class="player__settings-card-body">
-          <div class="player__quality-list" id="qualityList">
-            <button type="button" class="player__quality-btn is-active" data-level="-1" role="radio" aria-checked="true">
-              <span class="player__quality-btn-res">Auto</span>
-              <span class="player__quality-btn-sub">Adaptativo</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card: Avançado -->
-      <div class="player__settings-card" id="advancedCard">
-        <div class="player__settings-card-header">
-          <div class="player__settings-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          </div>
-          <div class="player__settings-card-header-text">
-            <div class="player__settings-card-title">Avançado</div>
-            <div class="player__settings-card-subtitle">Opções extras de reprodução</div>
-          </div>
-        </div>
-
-        <div class="player__settings-card-body">
-          <label class="player__settings-switch-label" id="lowLatencyLabel" style="display: none;">
-            <div class="player__settings-switch-text">
-              <div class="player__settings-switch-title">Baixa Latência</div>
-              <div class="player__settings-switch-sub">Reduz o atraso ao vivo do stream</div>
-            </div>
-            <span class="player__settings-switch">
-              <input type="checkbox" hidden class="player__settings-checkbox" id="lowLatencyCheckbox">
-              <span class="player__settings-switch-track"></span>
-            </span>
-          </label>
-        </div>
-      </div>
-
-    </div>
-
   </div>
 
   <script>
-    // Dados do canal injetados server-side
+    // Dados do canal injetados server-side. `epg` é um array de programas
+    // (janela agora − 1h → agora + 12h) serializado com safeScriptJson —
+    // TEXTO externo (XMLTV) tratado como dados, nunca como HTML executável.
     const CHANNEL_DATA = {
+      id: '{{CHANNEL_ID}}',
       name: '{{CHANNEL_NAME}}',
       url: '{{CHANNEL_URL}}',
       logo: '{{CHANNEL_LOGO}}',
       category: '{{CHANNEL_CATEGORY}}',
-      quality: '{{CHANNEL_QUALITY}}'
+      format: '{{CHANNEL_FORMAT}}',
+      state: '{{CHANNEL_STATE}}',
+      epg: {{CHANNEL_EPG_JSON}}
     };
   </script>
+  <script src="/Player/epgBar.js"></script>
   <script src="/Player/player.js"></script>
 </body>
 

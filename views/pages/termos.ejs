@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Termos de Uso — SvenTV', cssFile: 'auth' }) %></head>
+<body class="auth-page">
+<%- include('../partials/navbar', { user: user, activePage: 'termos', epgEnabled: locals.epgEnabled }) %>
+<%- include('../partials/flash') %>
+
+<main class="auth-main legal-main">
+  <div class="auth-card legal-card">
+    <div class="auth-card-header">
+      <h1 class="auth-title">Termos de Uso</h1>
+      <p class="auth-subtitle">Versão <%- termsVersion %> · Leia com atenção</p>
+    </div>
+
+    <div class="legal-body">
+      <section>
+        <h2 class="legal-h">1. Aceitação dos Termos</h2>
+        <p class="legal-p">Ao criar uma conta e marcar a caixa de aceite, você concorda com estes Termos de Uso. Se não concordar com qualquer parte deles, não utilize a SvenTV. A aceitação é registrada com a versão vigente e a data em que a conta foi criada.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">2. Sobre o serviço</h2>
+        <p class="legal-p">A SvenTV é uma API de streaming IPTV que fornece acesso programático a canais de TV e a uma grade de programação (EPG). O acesso se dá por um token de API exclusivo por conta.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">3. Conta e credenciais</h2>
+        <ul class="legal-list">
+          <li>Você é responsável por manter sua senha e seu token de API em segredo.</li>
+          <li>Não compartilhe credenciais. Contas compartilhadas podem ser suspensas.</li>
+          <li>Em caso de suspeita de vazamento, altere sua senha e regenere o token imediatamente.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="legal-h">4. Uso aceitável</h2>
+        <p class="legal-p">Você concorda em usar o serviço apenas para fins lícitos e pessoais, respeitando a legislação aplicável e os direitos de terceiros. É vedado, entre outros:</p>
+        <ul class="legal-list">
+          <li>Revender, redistribuir ou disponibilizar publicamente os fluxos (streams) acessados.</li>
+          <li>Engajar-se em scraping massivo, abuso de endpoints ou tentativas de contornar limite de requisições.</li>
+          <li>Usar o serviço para violar direitos autorais ou transmitir conteúdo ilegal.</li>
+          <li>Tentar obter acesso não autorizado a sistemas, contas ou dados de outros usuários.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="legal-h">5. Disponibilidade e qualidade</h2>
+        <p class="legal-p">Os canais podem ficar temporariamente indisponíveis por manutenção, troca de fontes ou limitações de terceiros. Envidamos esforços para manter alta disponibilidade, mas o serviço é fornecido "no estado em que se encontra", sem garantia de disponibilidade ininterrupta.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">6. Privacidade e segurança</h2>
+        <p class="legal-p">Seus dados de conta (nome, e-mail) são usados para autenticação e comunicação transacional. Senhas são armazenadas com hash criptográfico (bcrypt) e códigos de recuperação são armazenados apenas em formato hash. Não vendemos seus dados pessoais.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">7. Suspensão e cancelamento</h2>
+        <p class="legal-p">Podemos suspender ou encerrar contas que violem estes Termos, que representem risco de segurança ou que abusem da infraestrutura, sem prejuízo de outras medidas legais.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">8. Alterações nestes Termos</h2>
+        <p class="legal-p">Estes Termos podem ser atualizados periodicamente. Cada versão possui uma data (versão atual: <%- termsVersion %>). Novas aceitações seguem a versão vigente na data do cadastro; ao acessar o serviço após uma atualização material, a sua continuidade de uso representa concordância.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">9. Legislação e foro</h2>
+        <p class="legal-p">Estes Termos regem-se pelas leis brasileiras. Eventuais disputas serão resolvidas no foro da comarca da operadora do serviço.</p>
+      </section>
+
+      <section>
+        <h2 class="legal-h">10. Contato</h2>
+        <p class="legal-p">Dúvidas sobre estes Termos podem ser encaminhadas pelos canais de suporte informados na aplicação.</p>
+      </section>
+
+      <p class="legal-footer-note">Documento de referência: <strong>Termos de Uso v<%- termsVersion %></strong></p>
+    </div>
+
+    <p class="auth-footer-text">
+      <a href="/" class="auth-link">← Voltar ao início</a>
+    </p>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>
+</body>
+</html>

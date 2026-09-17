@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head><%- include('../partials/head', { title: 'Meu Perfil — SvenTV', cssFile: 'profile' }) %></head>
 <body>
-<%- include('../partials/navbar', { user: locals.user, activePage: 'profile' }) %>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'profile', epgEnabled: locals.epgEnabled }) %>
 <%- include('../partials/flash') %>
 
 <main class="profile-main">

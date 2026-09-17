@@ -117,6 +117,9 @@ const errorHandler = (err, req, res, next) => {
   res.status(status).json({
     success: false,
     message: status === 500 ? 'Erro interno do servidor.' : err.message,
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.fields ? { errors: err.fields } : {}),
+    ...(err.existingPlaylist ? { data: err.existingPlaylist } : {}),
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };

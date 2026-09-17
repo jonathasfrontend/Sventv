@@ -29,20 +29,14 @@
     volumeIcon: null,
     volumeRange: null,
     volumeFill: null,
-    settingsBtn: null,
-    settingsMenu: null,
     pipBtn: null,
     fullscreenBtn: null,
     fullscreenIcon: null,
-    qualityList: null,
-    qualitySummary: null,
-    qualityCard: null,
-    lowLatencyCheckbox: null,
-    lowLatencyLabel: null,
     liveBadge: null,
     loading: null,
     errorMessage: null,
-    channelInfo: null
+    channelInfo: null,
+    epgBar: null
   };
 
   // ==================== ESTADO GLOBAL ====================
@@ -54,7 +48,6 @@
     currentLevel: -1,
     levels: [],
     streamType: 'native', // 'hls' ou 'native'
-    lowLatencyMode: false,
     isFullscreen: false,
     showControls: true,
     hideTimeout: null,
@@ -92,10 +85,6 @@
     },
 
     // Shortcuts
-    getLowLatency() {
-      return this.get('player_low_latency', false) === true || this.get('player_low_latency', false) === 'true';
-    },
-
     getVolume() {
       const vol = parseFloat(this.get('player_volume', '1'));
       return isNaN(vol) ? 1 : Math.max(0, Math.min(1, vol));
@@ -105,24 +94,12 @@
       return this.get('player_muted', false) === true || this.get('player_muted', false) === 'true';
     },
 
-    getQualityLevel() {
-      return parseInt(this.get('player_quality_level', '-1'), 10);
-    },
-
-    setLowLatency(value) {
-      this.set('player_low_latency', value);
-    },
-
     setVolume(value) {
       this.set('player_volume', value);
     },
 
     setMuted(value) {
       this.set('player_muted', value);
-    },
-
-    setQualityLevel(value) {
-      this.set('player_quality_level', value);
     }
   };
 
@@ -139,20 +116,14 @@
       elements.volumeIcon = document.getElementById('volumeIcon');
       elements.volumeRange = document.getElementById('volumeRange');
       elements.volumeFill = document.getElementById('volumeFill');
-      elements.settingsBtn = document.getElementById('settingsBtn');
-      elements.settingsMenu = document.getElementById('settingsMenu');
       elements.pipBtn = document.getElementById('pipBtn');
       elements.fullscreenBtn = document.getElementById('fullscreenBtn');
       elements.fullscreenIcon = document.getElementById('fullscreenIcon');
-      elements.qualityList = document.getElementById('qualityList');
-      elements.qualitySummary = document.getElementById('qualitySummary');
-      elements.qualityCard = document.getElementById('qualityCard');
-      elements.lowLatencyCheckbox = document.getElementById('lowLatencyCheckbox');
-      elements.lowLatencyLabel = document.getElementById('lowLatencyLabel');
       elements.liveBadge = document.getElementById('liveBadge');
       elements.loading = document.getElementById('loading');
       elements.errorMessage = document.getElementById('errorMessage');
       elements.channelInfo = document.getElementById('channelInfo');
+      elements.epgBar = document.getElementById('epgBar');
     },
 
     showUIElements() {
@@ -164,6 +135,11 @@
       }
       if (elements.liveBadge) {
         elements.liveBadge.classList.remove('player__ui-element--hidden');
+      }
+      // A barra de EPG segue o mesmo ciclo visual dos controles (quando
+      // visível — canais sem EPG continuam com o atributo `hidden`).
+      if (elements.epgBar) {
+        elements.epgBar.classList.remove('player__ui-element--hidden');
       }
       state.showControls = true;
     },
@@ -179,6 +155,9 @@
         }
         if (elements.liveBadge) {
           elements.liveBadge.classList.add('player__ui-element--hidden');
+        }
+        if (elements.epgBar) {
+          elements.epgBar.classList.add('player__ui-element--hidden');
         }
         state.showControls = false;
       }
@@ -254,18 +233,6 @@
     hideLiveBadge() {
       if (elements.liveBadge) {
         elements.liveBadge.style.display = 'none';
-      }
-    },
-
-    toggleSettingsMenu() {
-      if (elements.settingsMenu) {
-        elements.settingsMenu.classList.toggle('player__settings-menu--open');
-      }
-    },
-
-    closeSettingsMenu() {
-      if (elements.settingsMenu) {
-        elements.settingsMenu.classList.remove('player__settings-menu--open');
       }
     },
 
@@ -384,199 +351,192 @@
 
   // ==================== MÓDULO: HLS ====================
   const HLSModule = {
+    MAX_AUTO_RETRIES: 2,
+
     detectStreamType(url) {
+      const format = (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.format) || '';
+      if (String(format).toLowerCase().includes('hls')) return 'hls';
       const lowerUrl = url.toLowerCase();
-      if (lowerUrl.includes('.m3u8') || lowerUrl.includes('.ts')) {
+      if (lowerUrl.includes('.m3u8') || lowerUrl.includes('.ts') || lowerUrl.includes('/proxy')) {
         return 'hls';
       }
       return 'native';
     },
 
-    getHlsConfig(lowLatencyMode) {
-      if (lowLatencyMode) {
-        return {
-          enableWorker: true,
-          lowLatencyMode: true,
-          liveDurationInfinity: true,
-          liveSyncDuration: 2,
-          liveMaxLatencyDuration: 8,
-          maxBufferLength: 20,
-          maxMaxBufferLength: 40,
-          backBufferLength: 30,
-          liveBackBufferLength: 15,
-          maxBufferSize: 10 * 1024 * 1024,
-          startLevel: -1,
-          capLevelToPlayerSize: true,
-          highBufferWatchdogPeriod: 0.5,
-          nudgeOffset: 0.1,
-          nudgeMaxRetry: 5,
-          maxSeekHole: 0.3,
-          manifestLoadingRetryDelay: 300,
-          manifestLoadingMaxRetry: 4,
-          levelLoadingRetryDelay: 300,
-          levelLoadingMaxRetry: 5,
-          fragLoadingRetryDelay: 300,
-          fragLoadingMaxRetry: 8,
-          xhrSetup: function(xhr) {
-            xhr.withCredentials = false;
-          }
-        };
-      } else {
-        return {
-          enableWorker: true,
-          lowLatencyMode: false,
-          liveDurationInfinity: true,
-          liveSyncDuration: 5,
-          liveMaxLatencyDuration: 15,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
-          backBufferLength: 60,
-          liveBackBufferLength: 30,
-          maxBufferSize: 20 * 1024 * 1024,
-          startLevel: -1,
-          capLevelToPlayerSize: true,
-          highBufferWatchdogPeriod: 1,
-          nudgeOffset: 0.1,
-          nudgeMaxRetry: 8,
-          maxSeekHole: 0.5,
-          manifestLoadingRetryDelay: 800,
-          manifestLoadingMaxRetry: 5,
-          levelLoadingRetryDelay: 800,
-          levelLoadingMaxRetry: 6,
-          fragLoadingRetryDelay: 800,
-          fragLoadingMaxRetry: 10,
-          xhrSetup: function(xhr) {
-            xhr.withCredentials = false;
-          }
-        };
-      }
+    getHlsConfig() {
+      return {
+        enableWorker: true,
+        lowLatencyMode: false,
+        liveDurationInfinity: true,
+        liveSyncDuration: 5,
+        liveMaxLatencyDuration: 15,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        backBufferLength: 60,
+        liveBackBufferLength: 30,
+        maxBufferSize: 20 * 1024 * 1024,
+        startLevel: -1,
+        capLevelToPlayerSize: true,
+        highBufferWatchdogPeriod: 1,
+        nudgeOffset: 0.1,
+        nudgeMaxRetry: 8,
+        maxSeekHole: 0.5,
+        manifestLoadingTimeOut: 30000,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetry: 5,
+        manifestLoadingMaxRetryDelay: 8000,
+        levelLoadingRetryDelay: 800,
+        levelLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 800,
+        fragLoadingMaxRetry: 10,
+        xhrSetup: function(xhr) {
+          xhr.withCredentials = false;
+        }
+      };
     },
 
-    init(url, lowLatency) {
+    init(url, isRecovery) {
       const video = elements.video;
       if (!video) return;
 
-      // Detecta tipo de stream
-      state.streamType = this.detectStreamType(url);
-
-      // Limpa instância anterior
+      this._currentUrl = url || this._currentUrl || CHANNEL_DATA.url;
+      state.streamType = this.detectStreamType(this._currentUrl);
       this.destroy();
+      if (!isRecovery) this.recoveryAttempts = 0;
 
       if (state.streamType === 'hls') {
         if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-          const config = this.getHlsConfig(lowLatency);
+          const config = this.getHlsConfig();
           const hls = new Hls(config);
-
           state.hls = hls;
 
-          hls.loadSource(url);
+          hls.loadSource(this._currentUrl);
           hls.attachMedia(video);
 
-          // Evento: Manifest parseado
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             state.levels = hls.levels;
-
+            this.recoveryAttempts = 0;
             UIModule.showLiveBadge();
-
-            // Aplica qualidade persistida somente quando existe mais de uma
-            // variante real para selecionar; caso contrário mantém automático.
-            const savedLevel = StorageModule.getQualityLevel();
-            const multiVariant = hls.levels.filter(
-              (l) => typeof l.height === 'number' && l.height > 0
-            ).length >= 2;
-            if (multiVariant && savedLevel >= 0 && savedLevel < hls.levels.length) {
-              hls.currentLevel = savedLevel;
-              state.currentLevel = savedLevel;
-            } else {
-              state.currentLevel = -1;
-            }
-
-            this.updateQualityList();
-
-            if (elements.lowLatencyLabel) {
-              elements.lowLatencyLabel.style.display = 'flex';
-            }
-
             UIModule.hideLoading();
-
             video.play().catch(() => {});
-
             StallMonitor.start();
           });
 
-          // Evento: Troca de nível
-          hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+          hls.on(Hls.Events.LEVEL_SWITCHED, () => {
             state.currentLevel = hls.currentLevel;
-            this._syncQualityUI(hls.currentLevel >= 0 && hls.currentLevel < hls.levels.length ? hls.currentLevel : -1);
           });
 
-          // Evento: Erro
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                  if (data.response && data.response.code) {
-                    if (data.response.code === 404) {
-                      UIModule.showError();
-                      this.updateErrorMessage('Canal não disponível', 'O conteúdo não foi encontrado no servidor (404)');
-                      return;
-                    } else if (data.response.code === 403) {
-                      UIModule.showError();
-                      this.updateErrorMessage('Acesso negado', 'O servidor bloqueou o acesso ao conteúdo (403)');
-                      return;
-                    } else if (data.response.code === 429) {
-                      UIModule.showError();
-                      this.updateErrorMessage('Limite de streams atingido', 'Você já tem o número máximo de streams abertos nesta conta. Feche outra aba/player e tente novamente.');
-                      return;
-                    }
-                  }
-                  hls.startLoad();
-                  break;
-
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                  hls.recoverMediaError();
-                  break;
-
-                default:
-                  UIModule.showError();
-                  this.updateErrorMessage('Erro ao reproduzir', `${data.details || 'Erro desconhecido'}`);
-                  this.destroy();
-                  break;
-              }
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (!data.fatal) return;
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                this._handleNetworkError(data);
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                this._showFatal('Erro ao reproduzir', data.details || 'Erro desconhecido');
+                break;
             }
           });
 
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = url;
-          state.streamType = 'native';
-
-          video.addEventListener('loadedmetadata', () => {
-            UIModule.hideLoading();
-          });
-
-          video.addEventListener('error', () => {
-            UIModule.showError();
-          });
+          this._playNative(this._currentUrl);
         } else {
-          UIModule.showError();
+          this._showFatal('Erro ao reproduzir', 'O navegador não suporta este formato de vídeo.');
         }
       } else {
-        video.src = url;
-
-        video.addEventListener('loadedmetadata', () => {
-          UIModule.hideLoading();
-        });
-
-        video.addEventListener('canplay', () => {
-          UIModule.hideLoading();
-        });
-
-        video.addEventListener('error', () => {
-          UIModule.showError();
-        });
-
-        video.load();
+        this._playNative(this._currentUrl);
       }
+    },
+
+    _handleNetworkError(data) {
+      const code = data && data.response && data.response.code;
+
+      if (code === 404) {
+        return this._showFatal('Canal não disponível', 'O conteúdo não foi encontrado no servidor (404).');
+      }
+      if (code === 403) {
+        return this._showFatal('Acesso negado', 'O servidor bloqueou o acesso ao conteúdo (403).');
+      }
+      if (code === 429) {
+        return this._showFatal('Limite de streams atingido', 'Você já tem o número máximo de streams abertos nesta conta. Feche outra aba/player e tente novamente.');
+      }
+
+      if (typeof code === 'number' && code >= 400) {
+        if (this.recoveryAttempts < 1) {
+          this._scheduleRecovery(1200);
+          return;
+        }
+        return this._showFatal('Erro ao reproduzir', 'A fonte do stream não está disponível. Tente novamente mais tarde.');
+      }
+
+      if (this.recoveryAttempts < this.MAX_AUTO_RETRIES) {
+        this._scheduleRecovery(600 * (this.recoveryAttempts + 1));
+        return;
+      }
+
+      this._showFatal('Erro de reprodução', 'Erro de rede. Tente novamente mais tarde.');
+    },
+
+    _scheduleRecovery(delayMs) {
+      this.recoveryAttempts++;
+      const url = this._currentUrl || (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.url);
+      const self = this;
+      setTimeout(() => self.init(url, true), delayMs);
+    },
+
+    _playNative(url) {
+      const video = elements.video;
+      if (!video) return;
+
+      const onMeta = () => {
+        UIModule.hideLoading();
+        this.recoveryAttempts = 0;
+      };
+      const onCanPlay = () => {
+        UIModule.hideLoading();
+        this.recoveryAttempts = 0;
+      };
+
+      video.removeEventListener('loadedmetadata', this._onNativeMeta);
+      video.removeEventListener('canplay', this._onNativeCanPlay);
+      video.removeEventListener('error', this._onNativeError);
+
+      this._onNativeMeta = onMeta;
+      this._onNativeCanPlay = onCanPlay;
+      this._onNativeError = () => {
+        if (this.recoveryAttempts < this.MAX_AUTO_RETRIES) {
+          this.recoveryAttempts++;
+          const wait = 600 * this.recoveryAttempts;
+          const target = this._currentUrl || url;
+          setTimeout(() => {
+            if (elements.video) {
+              elements.video.src = target;
+              elements.video.load();
+            }
+          }, wait);
+          return;
+        }
+        UIModule.hideLoading();
+        UIModule.updateErrorMessage('Erro de reprodução', 'Erro de rede. Tente novamente mais tarde.');
+        UIModule.showError();
+      };
+
+      video.addEventListener('loadedmetadata', onMeta);
+      video.addEventListener('canplay', onCanPlay);
+      video.addEventListener('error', this._onNativeError);
+
+      video.src = url;
+      video.load();
+    },
+
+    _showFatal(title, message) {
+      UIModule.hideLoading();
+      UIModule.updateErrorMessage(title, message);
+      UIModule.showError();
+      this.destroy();
     },
 
     destroy() {
@@ -588,123 +548,279 @@
       state.levels = [];
       state.currentLevel = -1;
       UIModule.hideLiveBadge();
-    },
+    }
+  };
 
-    updateErrorMessage(title, message) {
-      UIModule.updateErrorMessage(title, message);
-    },
+  // ==================== MÓDULO: ANALYTICS DE REPRODUÇÃO ====================
+  // Envia transições discretas (play/pause/resume/stop/ended) e heartbeats
+  // para /api/playback/* usando o token do próprio player (playback ou API).
+  // Heartbeats (30s) atualizam a sessão SEM gerar linha de evento.
+  const AnalyticsModule = (() => {
+    const channelId = (CHANNEL_DATA && CHANNEL_DATA.id) || '';
+    const token = (() => {
+      try {
+        return new URL(CHANNEL_DATA.url, window.location.origin).searchParams.get('token') || '';
+      } catch (_) { return ''; }
+    })();
 
-    changeQuality(levelIndex) {
-      if (state.hls) {
-        state.hls.currentLevel = levelIndex;
-        state.currentLevel = levelIndex;
-        StorageModule.setQualityLevel(levelIndex);
-        this.updateQualityList();
+    // Sem canal ou sem token na URL → não instrumenta (embed sem sessão).
+    if (!channelId || !token) return null;
+
+    const HEARTBEAT_MS = 30000; // alinhado a config.analytics.heartbeatIntervalMs
+    const sessionId = (() => {
+      try {
+        return (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      } catch (_) {
+        return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
       }
+    })();
+
+    let started = false;
+    let heartbeatTimer = null;
+
+    const currentMs = () => Math.floor((elements.video && elements.video.currentTime || 0) * 1000);
+
+    async function post(path, body) {
+      try {
+        await fetch(path, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify(body),
+          keepalive: true,
+        });
+      } catch (_) { /* analytics não pode quebrar o player */ }
+    }
+
+    function sendEvent(event) {
+      post('/api/playback/events', {
+        sessionId,
+        channelId,
+        event,
+        watchDurationMs: currentMs(),
+      });
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (elements.video && !elements.video.paused) {
+          post('/api/playback/heartbeat', {
+            sessionId,
+            channelId,
+            watchDurationMs: currentMs(),
+          });
+        }
+      }, HEARTBEAT_MS);
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    }
+
+    return {
+      trackStarted() {
+        if (started) return;
+        started = true;
+        sendEvent('play');
+        startHeartbeat();
+      },
+      onPause() {
+        if (!started) return;
+        sendEvent('pause');
+      },
+      onResume() {
+        if (!started) return;
+        sendEvent('resume');
+      },
+      onEnded() {
+        if (!started) return;
+        started = false;
+        sendEvent('ended');
+        stopHeartbeat();
+      },
+      onStop() {
+        if (!started) return;
+        started = false;
+        sendEvent('stop');
+        stopHeartbeat();
+      },
+    };
+  })();
+
+  // ==================== MÓDULO: MARCA D'ÁGUA ====================
+  // Código visual derivado da sessão (sem dados pessoais) que rotaciona
+  // entre os cantos para desencorajar captura/redistribuição do stream.
+  const WatermarkModule = {
+    _el: null,
+    _timer: null,
+    _positions: ['tr', 'br', 'bl', 'tl'],
+    _pos: 0,
+
+    _sessionShort() {
+      try {
+        if (window.crypto && window.crypto.randomUUID) {
+          return window.crypto.randomUUID().replace(/-/g, '').slice(0, 4).toUpperCase();
+        }
+      } catch (_) { /* fallback abaixo */ }
+      return Math.random().toString(36).slice(2, 6).toUpperCase();
     },
 
-    _qualityLabel(level) {
-      const h = level.height;
-      if (typeof h === 'number' && h > 0) return `${h}p`;
-      if (level.name) return level.name;
-      return 'Auto';
+    _deviceId() {
+      return '#' + Math.random().toString(36).slice(2, 7).toUpperCase();
     },
 
-    _qualitySub(level) {
-      if (level.bitrate) return `${Math.round(level.bitrate / 1000)} kbps`;
-      return '';
+    buildHTML() {
+      return '<span class="player__watermark-line">SvenTV</span>' +
+        '<span class="player__watermark-line" hidden>ID: ' + this._deviceId() + '</span>' +
+        '<span class="player__watermark-line" hidden>Session: ' + this._sessionShort() + '</span>';
     },
 
-    updateQualityList() {
-      if (!elements.qualityList) return;
+    start() {
+      this._el = document.getElementById('watermark');
+      if (!this._el) return;
+      this._el.innerHTML = this.buildHTML();
+      this._pos = Math.floor(Math.random() * this._positions.length);
+      this._apply();
+      this._timer = setInterval(() => {
+        this._pos = (this._pos + 1) % this._positions.length;
+        this._apply();
+      }, 45000);
+    },
 
-      // Variantes com resolução declarada (níveis distintos)
-      const variants = (state.levels || []).filter(
-        (level) => typeof level.height === 'number' && level.height > 0
-      );
+    _apply() {
+      if (!this._el) return;
+      this._el.className = 'player__watermark player__watermark--' + this._positions[this._pos];
+    },
 
-      // Sem 2+ resoluções reais: o seletor não faz sentido — oculta o card
-      // e mantém a reprodução em automático.
-      if (variants.length < 2) {
-        if (elements.qualityCard) elements.qualityCard.style.display = 'none';
-        elements.qualityList.innerHTML = '';
-        if (elements.qualitySummary) elements.qualitySummary.textContent = 'Automática';
+    setPaused(paused) {
+      if (!this._el) return;
+      this._el.classList.toggle('player__watermark--paused', !!paused);
+    },
+
+    stop() {
+      if (this._timer) clearInterval(this._timer);
+      this._timer = null;
+      this._el = null;
+    }
+  };
+
+  // ==================== MÓDULO: BARRA DE EPG ====================
+  // EPG embutido server-side em CHANNEL_DATA.epg (janela agora − 1h →
+  // agora + 12h). NENHUM fetch durante a reprodução: atualização 100%
+  // local via setInterval. Conteúdo de EPG é TEXTO externo — renderizado
+  // com textContent, nunca innerHTML (previne XSS via XMLTV).
+  const EPGModule = (() => {
+    const INTERVAL_MS = 30000; // atualização local de now (sem rede)
+
+    let list = [];
+    let hasEpg = false;
+    let timer = null;
+
+    let bar = null;
+    let nowTitle = null;
+    let nowMeta = null;
+    let nextTitle = null;
+    let nextTime = null;
+    let progressFill = null;
+
+    function cacheElements() {
+      bar = document.getElementById('epgBar');
+      nowTitle = document.getElementById('epgNowTitle');
+      nowMeta = document.getElementById('epgNowMeta');
+      nextTitle = document.getElementById('epgNextTitle');
+      nextTime = document.getElementById('epgNextTime');
+      progressFill = document.getElementById('epgProgressFill');
+    }
+
+    function init() {
+      cacheElements();
+      if (!bar) return;
+
+      const raw = (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.epg) || [];
+      // Normalização/validação e ordenação (start ASC) em uma passada.
+      list = (typeof EpgBarCore !== 'undefined' && EpgBarCore.normalizeProgrammes)
+        ? EpgBarCore.normalizeProgrammes(raw)
+        : [];
+
+      hasEpg = list.length > 0;
+      if (!hasEpg) {
+        // EPG desativado, sem cache, canal sem match ou dados inválidos →
+        // barra permanentemente oculta. Sem mensagem de "sem programação".
         return;
       }
 
-      if (elements.qualityCard) elements.qualityCard.style.display = 'block';
-
-      const active = state.hls ? state.hls.currentLevel : state.currentLevel;
-
-      const heightCount = {};
-      variants.forEach((level) => {
-        if (typeof level.height === 'number' && level.height > 0) heightCount[level.height] = (heightCount[level.height] || 0) + 1;
-      });
-
-      const ordered = variants
-        .map((level, index) => ({ index, level }))
-        .sort((a, b) => b.level.height - a.level.height);
-
-      const buttons = [];
-
-      // Auto
-      buttons.push(
-        '<button type="button" class="player__quality-btn' + (active < 0 ? ' is-active' : '') + '" data-level="-1" role="radio" aria-checked="' + (active < 0) + '">' +
-          '<span class="player__quality-btn-res">Auto</span>' +
-          '<span class="player__quality-btn-sub">Adaptativo</span>' +
-        '</button>'
-      );
-
-      ordered.forEach(({ index, level }) => {
-        const isActive = active === index;
-        let sub = this._qualitySub(level);
-        if (heightCount[level.height] > 1 && !sub) sub = '—';
-        buttons.push(
-          '<button type="button" class="player__quality-btn' + (isActive ? ' is-active' : '') + '" data-level="' + index + '" role="radio" aria-checked="' + isActive + '">' +
-            '<span class="player__quality-btn-res">' + this._qualityLabel(level) + '</span>' +
-            (sub ? '<span class="player__quality-btn-sub">' + sub + '</span>' : '') +
-          '</button>'
-        );
-      });
-
-      elements.qualityList.innerHTML = buttons.join('');
-
-      // Reflete o nível ativo
-      this._syncQualityUI(active >= 0 && active < state.levels.length ? active : -1);
-    },
-
-    _syncQualityUI(activeIndex) {
-      // Apenas reflete o estado visual e o resumo (sem re-render, evitando
-      // perder o foco/cliques durante a troca).
-      const buttons = elements.qualityList ? elements.qualityList.querySelectorAll('.player__quality-btn') : [];
-      buttons.forEach((btn) => {
-        const level = parseInt(btn.getAttribute('data-level'), 10);
-        const isActive = (level === activeIndex) || (activeIndex === -1 && level === -1);
-        btn.classList.toggle('is-active', isActive);
-        btn.setAttribute('aria-checked', String(isActive));
-      });
-
-      // Se o seletor está oculto (fonte com única resolução), o resumo
-      // permanece "Automática" — nada a sincronizar.
-      const card = elements.qualityCard;
-      if (card && card.style.display === 'none') return;
-
-      if (elements.qualitySummary) {
-        if (activeIndex === -1) {
-          elements.qualitySummary.textContent = 'Automática';
-        } else if (state.levels[activeIndex]) {
-          elements.qualitySummary.textContent = this._qualityLabel(state.levels[activeIndex]);
-        } else {
-          elements.qualitySummary.textContent = 'Automática';
-        }
-      }
-    },
-
-    reinitialize() {
-      const url = CHANNEL_DATA.url;
-      this.init(url, state.lowLatencyMode);
+      bar.hidden = false;
+      render();
+      timer = setInterval(render, INTERVAL_MS);
     }
-  };
+
+    function render() {
+      if (!hasEpg || !bar) return;
+
+      const now = Date.now();
+      const view = EpgBarCore.computeView(list, now);
+
+      // Passando agora
+      if (view.current) {
+        nowTitle.textContent = view.current.title;
+        if (nowMeta) {
+          nowMeta.textContent = view.current.description || view.current.subtitle || '';
+          nowMeta.hidden = !(view.current.description || view.current.subtitle);
+        }
+        const pct = EpgBarCore.computeProgress(view.current, now);
+        if (progressFill) progressFill.style.width = Math.round(pct * 10) / 10 + '%';
+      } else {
+        // Gap: nenhum programa cobre `now`.
+        nowTitle.textContent = 'Sem programação no momento';
+        if (nowMeta) {
+          nowMeta.textContent = '';
+          nowMeta.hidden = true;
+        }
+        if (progressFill) progressFill.style.width = '0%';
+      }
+
+      // Próximo
+      if (view.next) {
+        nextTitle.textContent = view.next.title;
+        nextTitle.hidden = false;
+        if (nextTime) {
+          nextTime.textContent = formatTime(view.next.start);
+          nextTime.hidden = false;
+        }
+      } else {
+        // Dados exauridos: oculta o próximo (nunca faz nova requisição).
+        nextTitle.hidden = true;
+        if (nextTime) nextTime.hidden = true;
+      }
+    }
+
+    function formatTime(ms) {
+      try {
+        return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function destroy() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      list = [];
+      hasEpg = false;
+    }
+
+    return { init, render, destroy };
+  })();
 
   // ==================== MÓDULO: CONTROLS ====================
   const ControlsModule = {
@@ -840,45 +956,6 @@
       });
     },
 
-    initSettings() {
-      if (!elements.settingsBtn) return;
-
-      elements.settingsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        UIModule.toggleSettingsMenu();
-      });
-
-      // Fechar ao clicar fora
-      document.addEventListener('click', (e) => {
-        if (elements.settingsMenu && !elements.settingsMenu.contains(e.target) && e.target !== elements.settingsBtn) {
-          UIModule.closeSettingsMenu();
-        }
-      });
-
-      // Checkbox: Baixa Latência
-      if (elements.lowLatencyCheckbox) {
-        elements.lowLatencyCheckbox.checked = state.lowLatencyMode;
-
-        elements.lowLatencyCheckbox.addEventListener('change', (e) => {
-          state.lowLatencyMode = e.target.checked;
-          StorageModule.setLowLatency(state.lowLatencyMode);
-
-          HLSModule.reinitialize();
-        });
-      }
-
-      // Seletor de qualidade (botões customizados)
-      if (elements.qualityList && !elements.qualityList.hasAttribute('data-listener-attached')) {
-        elements.qualityList.addEventListener('click', (e) => {
-          const btn = e.target.closest('.player__quality-btn');
-          if (!btn) return;
-          const level = parseInt(btn.getAttribute('data-level'), 10);
-          HLSModule.changeQuality(isNaN(level) ? -1 : level);
-        });
-        elements.qualityList.setAttribute('data-listener-attached', 'true');
-      }
-    },
-
     resetControlsTimer() {
       UIModule.showUIElements();
 
@@ -926,8 +1003,7 @@
 
       elements.container.addEventListener('click', (e) => {
         // Ignora cliques em controles
-        if (e.target.closest('.player__controls') ||
-          e.target.closest('.player__settings-menu')) {
+        if (e.target.closest('.player__controls')) {
           return;
         }
 
@@ -981,45 +1057,73 @@
     // 1. Cache de elementos
     UIModule.init();
 
-    // 2. Carregar configurações persistidas
-    state.lowLatencyMode = StorageModule.getLowLatency();
+    // Estado administrativo do canal: em manutenção/bloqueado o player não
+    // tenta abrir o HLS (evita retry infinito) e exibe a mensagem correta.
+    const channelState = (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.state) || 'live';
+    if (channelState !== 'live') {
+      const info = channelState === 'blocked'
+        ? { title: 'Canal bloqueado', message: 'Este canal foi bloqueado e não está disponível para reprodução.' }
+        : { title: 'Canal em manutenção', message: 'Este canal está em manutenção no momento. Tente novamente mais tarde.' };
+      UIModule.hideLoading();
+      UIModule.updateErrorMessage(info.title, info.message);
+      UIModule.showError();
+      return;
+    }
 
-    // 3. Inicializar HLS
-    HLSModule.init(CHANNEL_DATA.url, state.lowLatencyMode);
+    // 2. Inicializar HLS
+    HLSModule.init(CHANNEL_DATA.url);
 
-    // 4. Inicializar controles
+    // 3. Inicializar controles
     ControlsModule.initPlayPause();
     ControlsModule.initVolume();
     ControlsModule.initFullscreen();
     ControlsModule.initPiP();
-    ControlsModule.initSettings();
     ControlsModule.initAutoHide();
     ControlsModule.initClickHandling();
 
-    // 5. Inicializar atalhos de teclado
+    // 4. Marca d'água de sessão
+    WatermarkModule.start();
+
+    // 5. Barra de EPG (agora / próximo / progresso) — alimentada pelos
+    //    dados embutidos; sem rede. Canal sem EPG → barra fica oculta.
+    EPGModule.init();
+
+    // 6. Inicializar atalhos de teclado
     KeyboardModule.init();
 
-    // 6. Event listeners do vídeo
+    // 7. Event listeners do vídeo
     if (elements.video) {
       elements.video.addEventListener('waiting', () => {
         UIModule.showLoading();
       });
 
+      // Analytics: reprodução efetivamente iniciada (autoplay inicial).
       elements.video.addEventListener('playing', () => {
         UIModule.hideLoading();
         UIModule.hideError();
         state.isPlaying = true;
         UIModule.updatePlayButton(true);
+        HLSModule.recoveryAttempts = 0;
+        if (AnalyticsModule) AnalyticsModule.trackStarted();
       });
 
       elements.video.addEventListener('pause', () => {
         state.isPlaying = false;
         UIModule.updatePlayButton(false);
+        WatermarkModule.setPaused(true);
+        if (AnalyticsModule) AnalyticsModule.onPause();
       });
 
+      // 'play' depois de 'playing' inicial ⇒ retomada após pause.
       elements.video.addEventListener('play', () => {
         state.isPlaying = true;
         UIModule.updatePlayButton(true);
+        WatermarkModule.setPaused(false);
+        if (AnalyticsModule) AnalyticsModule.onResume();
+      });
+
+      elements.video.addEventListener('ended', () => {
+        if (AnalyticsModule) AnalyticsModule.onEnded();
       });
 
       elements.video.addEventListener('stalled', () => {
@@ -1044,6 +1148,8 @@
   function cleanup() {
     HLSModule.destroy();
     StallMonitor.stop();
+    WatermarkModule.stop();
+    EPGModule.destroy();
 
     if (state.hideTimeout) {
       clearTimeout(state.hideTimeout);
@@ -1057,5 +1163,11 @@
   // ==================== EVENTOS GLOBAIS ====================
   window.addEventListener('load', initPlayer);
   window.addEventListener('beforeunload', cleanup);
+
+  // Fechar/carregar outra página no iframe ⇒ abortar sessão com 'stop'
+  // (keepalive garante a entrega mesmo no teardown da página).
+  window.addEventListener('pagehide', () => {
+    if (AnalyticsModule) AnalyticsModule.onStop();
+  });
 
 })();

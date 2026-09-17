@@ -3,7 +3,7 @@
 const express = require('express');
 const ChannelController = require('../controllers/channelController');
 const { requireApiAuth, requireStreamAccess, requireRole } = require('../middlewares/auth');
-const { apiLimiter, streamLimiter, proxyStreamLimiter } = require('../middlewares/rateLimiter');
+const { apiLimiter, streamLimiter, proxyLimiter } = require('../middlewares/rateLimiter');
 const { antiHotlink } = require('../middlewares/security');
 
 const router = express.Router();
@@ -97,7 +97,7 @@ router.get(
 router.get(
 	'/:id/proxy',
 	requireStreamAccess,
-	proxyStreamLimiter,
+	proxyLimiter,
 	antiHotlink,
 	channelController.streamProxy
 );

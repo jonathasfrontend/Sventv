@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><%- include('../partials/head', { title: 'Minhas Playlists — SvenTV', cssFile: 'playlists' }) %></head>
+<body>
+<%- include('../partials/navbar', { user: locals.user, activePage: 'playlists', epgEnabled: locals.epgEnabled }) %>
+<%- include('../partials/flash') %>
+
+<main class="playlists-main">
+  <div class="playlists-header">
+    <h1 class="playlists-title">Minhas Playlists</h1>
+    <p class="playlists-desc">Organize seus canais favoritos. Um canal só pode estar em uma playlist por conta.</p>
+  </div>
+
+  <!-- ── Criar playlist ────────────────────────────────────── -->
+  <form id="createPlaylistForm" class="playlists-create" novalidate>
+    <div class="form-group">
+      <label class="form-label" for="newPlaylistName">Nome da playlist</label>
+      <input type="text" id="newPlaylistName" class="form-input"
+        placeholder="Ex.: Esportes, Filmes, Notícias..." maxlength="80" required>
+      <span class="form-error" id="newPlaylistNameError"></span>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="newPlaylistDescription">Descrição <span class="form-hint-inline">(opcional)</span></label>
+      <input type="text" id="newPlaylistDescription" class="form-input"
+        placeholder="O que tem nesta playlist?" maxlength="255">
+    </div>
+    <button type="submit" class="btn btn-primary">
+      <span class="btn-text">Criar playlist</span>
+      <span class="btn-spinner" hidden></span>
+    </button>
+    <div id="createAlert" class="form-alert" hidden></div>
+  </form>
+
+  <!-- ── Lista de playlists ────────────────────────────────── -->
+  <div class="playlists-list" id="playlistsList">
+    <div class="playlists-empty" id="playlistsEmpty" hidden>
+      <p>Você ainda não tem playlists. Crie a primeira acima.</p>
+    </div>
+  </div>
+
+  <!-- ── Detalhe da playlist (canais) ─────────────────────── -->
+  <section class="playlist-detail" id="playlistDetail" hidden>
+    <div class="playlist-detail-header">
+      <div>
+        <h2 class="playlist-detail-title" id="detailTitle">Playlist</h2>
+        <p class="playlist-detail-desc" id="detailDesc"></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="closeDetailBtn">✕ Fechar</button>
+    </div>
+    <div class="playlist-channels" id="detailChannels"></div>
+  </section>
+</main>
+
+<!-- Modal player (mesmo padrão do dashboard) -->
+<div class="modal-overlay" id="playerModal" hidden>
+  <div class="modal-container">
+    <div class="modal-header">
+      <div class="modal-info">
+        <img id="modalLogo" class="modal-logo" alt="">
+        <div>
+          <h3 id="modalTitle" class="modal-title">Canal</h3>
+          <span id="modalCategory" class="modal-category">Geral</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-close" id="modalClose" aria-label="Fechar">✕</button>
+      </div>
+    </div>
+    <div class="modal-player-wrap">
+      <iframe
+        id="playerFrame"
+        class="player-iframe"
+        src="about:blank"
+        allowfullscreen
+        allow="autoplay; fullscreen; picture-in-picture"
+        frameborder="0"
+        scrolling="no"
+        title="Player SvenTV"
+      ></iframe>
+      <div class="player-error" id="playerError" hidden>
+        <span>⚠️</span>
+        <p>Canal não disponível ou ID inválido.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/footer') %>
+<script src="/js/realtime.js"></script>
+<script src="/js/playlists.js"></script>
+</body>
+</html>

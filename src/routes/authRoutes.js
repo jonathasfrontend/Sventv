@@ -16,7 +16,7 @@ const { Router } = require('express');
 const multer = require('multer');
 const authController = require('../controllers/authController');
 const { requireSessionAuth } = require('../middlewares/auth');
-const { loginLimiter, registerLimiter } = require('../middlewares/rateLimiter');
+const { loginLimiter, registerLimiter, forgotPasswordLimiter, resetPasswordLimiter } = require('../middlewares/rateLimiter');
 const { validate } = require('../middlewares/validate');
 
 const router = Router();
@@ -46,6 +46,22 @@ router.post(
   loginLimiter,
   validate('login'),
   authController.login
+);
+
+// ── Recuperação de senha (públicas) ───────────────────────────
+
+router.post(
+  '/forgot-password',
+  forgotPasswordLimiter,
+  validate('forgotPassword'),
+  authController.forgotPassword
+);
+
+router.post(
+  '/reset-password',
+  resetPasswordLimiter,
+  validate('resetPassword'),
+  authController.resetPassword
 );
 
 // ── Rotas protegidas (exigem sessão ativa) ────────────────────

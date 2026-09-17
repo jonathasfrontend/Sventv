@@ -12,6 +12,7 @@ const logger = require('../utils/logger');
 const config = require('../config/app');
 const { uploadAvatar } = require('../services/avatarService');
 const { audit } = require('../services/auditService');
+const { passwordResetService, PasswordResetError } = require('../services/passwordResetService');
 
 // ─────────────────────────────────────────────────────────────
 // Helper: extrai o IP real considerando proxies
@@ -45,9 +46,16 @@ const authController = {
    */
   async register(req, res, next) {
     try {
-      const { name, email, password, avatar } = req.body;
+      const { name, email, password, confirmPassword, acceptedTerms, avatar } = req.body;
 
-      const result = await authService.register({ name, email, password, avatar });
+      const result = await authService.register({
+        name,
+        email,
+        password,
+        confirmPassword,
+        acceptedTerms,
+        avatar,
+      });
 
       setSessionCookie(res, result.sessionToken);
 
@@ -56,6 +64,14 @@ const authController = {
         req,
         userId: result.user?.id,
         email: result.user?.email,
+      });
+
+      audit({
+        action: 'TERMS_ACCEPTED',
+        req,
+        userId: result.user?.id,
+        email: result.user?.email,
+        meta: { version: config.terms.version },
       });
 
       return res.status(201).json({
@@ -272,6 +288,54 @@ const authController = {
         return res.status(err.statusCode).json({ success: false, message: err.message });
       }
       next(err);
+    }
+  },
+
+  /**
+   * POST /auth/forgot-password
+   * Solicita um código de recuperação por e-mail.
+   * Resposta GENÉRICA idêntica para e-mail existente/inexistente
+   * (anti-enumeração) e ainda que o envio SMTP falhe.
+   */
+  async forgotPassword(req, res, next) {
+    try {
+      const { email } = req.body;
+      await passwordResetService.requestPasswordReset({ email, req });
+
+      return res.status(200).json({
+        success: true,
+        message:
+          'Se o e-mail estiver cadastrado, você receberá um código de recuperação em instantes.',
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * POST /auth/reset-password
+   * Redefine a senha com e-mail + código de 6 dígitos.
+   * Em sucesso, TODAS as sessões do usuário são revogadas.
+   */
+  async resetPassword(req, res, next) {
+    try {
+      const { email, code, newPassword } = req.body;
+      await passwordResetService.resetPassword({ email, code, newPassword, req });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Senha redefinida com sucesso. Faça login novamente.',
+      });
+    } catch (err) {
+      if (err instanceof PasswordResetError) {
+        // Mensagem já genérica no serviço — NUNCA diferencia motivo.
+        return res.status(400).json({ success: false, message: err.message });
+      }
+      logger.warn(`🔒 Falha inesperada na redefinição de senha: ${err && err.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Não foi possível concluir a operação. Tente novamente em instantes.',
+      });
     }
   },
 

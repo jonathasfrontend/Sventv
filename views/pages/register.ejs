@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head><%- include('../partials/head', { title: 'Criar Conta — SvenTV', cssFile: 'auth' }) %></head>
 <body class="auth-page">
-<%- include('../partials/navbar', { user: null, activePage: 'register' }) %>
+<%- include('../partials/navbar', { user: null, activePage: 'register', epgEnabled: locals.epgEnabled }) %>
 <%- include('../partials/flash') %>
 
 <main class="auth-main">
@@ -71,8 +71,8 @@
 
       <div class="form-group form-check">
         <label class="check-label">
-          <input type="checkbox" id="terms" name="terms" required>
-          <span>Aceito os <a href="#" class="auth-link">termos de uso</a></span>
+          <input type="checkbox" id="terms" name="acceptedTerms" required>
+          <span>Aceito os <a href="/termos" target="_blank" rel="noopener noreferrer">Termos de Uso</a> (v<%- termsVersion %>)</span>
         </label>
         <span class="form-error" id="termsError"></span>
       </div>

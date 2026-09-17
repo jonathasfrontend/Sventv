@@ -64,6 +64,30 @@ const copyUrlBtn     = document.getElementById('copyUrlBtn');
 const playerError    = document.getElementById('playerError');
 const retryBtn       = document.getElementById('retryBtn');
 
+// Pessoal (recents / playlists / recomendações)
+const recentBlock    = document.getElementById('recentBlock');
+const recentList     = document.getElementById('recentList');
+const playlistBlock  = document.getElementById('playlistBlock');
+const playlistList   = document.getElementById('playlistList');
+const recoBlock      = document.getElementById('recoBlock');
+const recoList       = document.getElementById('recoList');
+
+// Tendências (Top 10 do catálogo — filmes / séries / ao vivo)
+const trendingMoviesBlock    = document.getElementById('trendingMoviesBlock');
+const trendingMoviesList     = document.getElementById('trendingMoviesList');
+const trendingSeriesBlock    = document.getElementById('trendingSeriesBlock');
+const trendingSeriesList     = document.getElementById('trendingSeriesList');
+const trendingChannelsBlock  = document.getElementById('trendingChannelsBlock');
+const trendingChannelsList   = document.getElementById('trendingChannelsList');
+
+// Save-to-playlist (painel dentro do modal)
+const saveToPlaylistBtn   = document.getElementById('saveToPlaylistBtn');
+const savePanel           = document.getElementById('savePanel');
+const savePlaylistSelect  = document.getElementById('savePlaylistSelect');
+const saveNewPlaylistName = document.getElementById('saveNewPlaylistName');
+const saveChannelBtn      = document.getElementById('saveChannelBtn');
+const savePanelMsg        = document.getElementById('savePanelMsg');
+
 // ── API fetch (filtros/busca/paginação após carga inicial) ────
 async function apiFetch(endpoint) {
   const res = await fetch(endpoint, {
@@ -287,6 +311,8 @@ function openPlayer(ch) {
   modalTitle.textContent    = ch.name || 'Canal';
   modalCategory.textContent = ch.category || 'Geral';
   playerError.hidden = true;
+  if (savePanel) savePanel.hidden = true;
+  if (savePanelMsg) savePanelMsg.hidden = true;
 
   if (ch.logo) { modalLogo.src = ch.logo; modalLogo.style.display = ''; }
   else { modalLogo.style.display = 'none'; }
@@ -333,6 +359,286 @@ retryBtn?.addEventListener('click', () => {
   if (_currentChannel) {
     playerError.hidden = true;
     loadPlayerFrame(_currentChannel);
+  }
+});
+
+// ── Pessoal (recents / playlists / recomendações) ────────────
+// /api/dashboard é uma chamada privada (session OU api token).
+async function apiFetchUser(endpoint, options = {}) {
+  const headers = {};
+  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await fetch(endpoint, { ...options, headers, credentials: 'same-origin' });
+  if (res.status === 401) {
+    localStorage.removeItem('apiToken');
+    window.location.href = '/login';
+    throw new Error('Não autorizado');
+  }
+  const json = await res.json();
+  if (!res.ok) {
+    const e = new Error(json.message || `Erro ${res.status}`);
+    e.status = res.status;
+    e.json = json;
+    throw e;
+  }
+  return json;
+}
+
+function prettyMs(ms) {
+  const totalMin = Math.max(0, Math.round((Number(ms) || 0) / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h}h ${m}min`;
+  return `${m}min`;
+}
+
+function pcardLogo(ch) {
+  if (!ch) return '';
+  const name = escapeHtml(ch.channelName || ch.name || 'Canal');
+  const logo = ch.channelLogo || ch.logo || '';
+  return logo
+    ? `<img class="pcard-logo" src="${escapeHtml(logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="pcard-logo pcard-logo-fallback">${name.charAt(0)}</div>`;
+}
+
+function renderRecent(history) {
+  if (!history || !history.length) return;
+  recentBlock.hidden = false;
+  recentList.innerHTML = history.map(h => `
+    <button type="button" class="pcard" data-channel-id="${escapeHtml(h.channelId)}">
+      ${pcardLogo(h)}
+      <div class="pcard-body">
+        <span class="pcard-name">${escapeHtml(h.channelName || h.channelId)}</span>
+        <span class="pcard-cat">${escapeHtml(h.channelCategory || 'Geral')}</span>
+        <span class="pcard-extra">${h.playCount || 0} reprodução(ões) • ${prettyMs(h.totalWatchMs)}</span>
+      </div>
+    </button>`).join('');
+  recentList.querySelectorAll('[data-channel-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ch = state.allChannels.find(c => c.id === btn.dataset.channelId);
+      if (ch) openPlayer(ch);
+    });
+  });
+  initCarousel(recentBlock);
+}
+
+function renderPlaylists(playlists) {
+  if (!playlists || !playlists.length) return;
+  playlistBlock.hidden = false;
+  playlistList.innerHTML = playlists.map(p => `
+    <div class="pcard pcard-static">
+      <div class="pcard-body">
+        <span class="pcard-name">${escapeHtml(p.name)}</span>
+        <span class="pcard-cat">${p.channelCount || 0} canal(ais)</span>
+      </div>
+    </div>`).join('');
+  initCarousel(playlistBlock);
+}
+
+function renderRecommendations(payload) {
+  const items = payload?.items || [];
+  const reasons = payload?.reasons || {};
+  if (!items.length) return;
+  recoBlock.hidden = false;
+  recoList.innerHTML = items.map(ch => {
+    const reason = reasons[ch.id];
+    return `
+      <button type="button" class="pcard pcard-reco" data-channel-id="${escapeHtml(ch.id)}">
+        ${pcardLogo(ch)}
+        <div class="pcard-body">
+          <span class="pcard-name">${escapeHtml(ch.name)}</span>
+          <span class="pcard-cat">${escapeHtml(ch.category || 'Geral')}</span>
+          <span class="pcard-reason">${reason ? escapeHtml(reason.text) : 'Porque combina com o que você assiste.'}</span>
+        </div>
+      </button>`;
+  }).join('');
+  recoList.querySelectorAll('[data-channel-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ch = state.allChannels.find(c => c.id === btn.dataset.channelId);
+      if (ch) openPlayer(ch);
+    });
+  });
+  initCarousel(recoBlock);
+}
+
+// ── Tendências (Top 10 do catálogo) ─────────────────────────
+// Cards somente exibição: o catálogo não pertence ao grid SvenTV,
+// então não abrem player nem navegam. Falha/ausência de dados
+// apenas mantém a seção oculta (fail-open do backend + frontend).
+function trendingPosterCard(item) {
+  const img = item.image
+    ? `<img class="tcard-img" src="${escapeHtml(item.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+    : `<div class="tcard-img tcard-img--fallback">${escapeHtml((item.title || '?').charAt(0))}</div>`;
+  const meta = [item.rating, item.runTime].filter(Boolean).join(' • ');
+  return `
+    <div class="pcard pcard-static pcard--poster">
+      ${img}
+      <div class="pcard-body">
+        <span class="pcard-name">${escapeHtml(item.title || 'Sem título')}</span>
+        ${meta ? `<span class="pcard-cat">${escapeHtml(meta)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function trendingChannelCard(ch) {
+  const name = ch.name || ch.channelName || 'Canal';
+  const logo = ch.logo
+    ? `<img class="pcard-logo" src="${escapeHtml(ch.logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="pcard-logo pcard-logo-fallback">${escapeHtml(name.charAt(0))}</div>`;
+  return `
+    <div class="pcard pcard-static">
+      ${logo}
+      <div class="pcard-body">
+        <span class="pcard-name">${escapeHtml(name)}</span>
+        <span class="pcard-cat">${escapeHtml(ch.genre || ch.genreCategory || 'Ao vivo')}</span>
+        ${ch.shortName ? `<span class="pcard-extra">${escapeHtml(ch.shortName)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderTrendingMovies(movies) {
+  if (!movies || !movies.length) return;
+  trendingMoviesBlock.hidden = false;
+  trendingMoviesList.innerHTML = movies.map(trendingPosterCard).join('');
+  initCarousel(trendingMoviesBlock);
+}
+
+function renderTrendingSeries(series) {
+  if (!series || !series.length) return;
+  trendingSeriesBlock.hidden = false;
+  trendingSeriesList.innerHTML = series.map(trendingPosterCard).join('');
+  initCarousel(trendingSeriesBlock);
+}
+
+function renderTrendingChannels(channels) {
+  if (!channels || !channels.length) return;
+  trendingChannelsBlock.hidden = false;
+  trendingChannelsList.innerHTML = channels.map(trendingChannelCard).join('');
+  initCarousel(trendingChannelsBlock);
+}
+
+async function loadTrending() {
+  try {
+    const json = await apiFetchUser('/api/trending');
+    const data = json.data || {};
+    renderTrendingMovies(data.movies);
+    renderTrendingSeries(data.series);
+    renderTrendingChannels(data.channels);
+  } catch (err) {
+    // Falha silenciosa: os carrosséis de tendências ficam ocultos.
+    console.warn('loadTrending:', err.message);
+  }
+}
+
+// ── Carrossel horizontal ───────────────────────────────────
+// O trilho (.personal-cards) rola com scroll-snap; as setas rolam
+// ~80% da largura visível por clique e ficam ocultas quando não há
+// mais conteúdo para os dois lados.
+function initCarousel(block) {
+  if (!block || block.dataset.carouselInited) return;
+  block.dataset.carouselInited = 'true';
+
+  const track  = block.querySelector('.personal-cards');
+  const prev   = block.querySelector('[data-carousel-prev]');
+  const next   = block.querySelector('[data-carousel-next]');
+  if (!track || !prev || !next) return;
+
+  const updateArrows = () => {
+    const maxScroll = track.scrollWidth - track.clientWidth;
+    prev.hidden = track.scrollLeft <= 4;
+    next.hidden = track.scrollLeft >= maxScroll - 4;
+  };
+
+  prev.addEventListener('click', () => {
+    track.scrollBy({ left: -(track.clientWidth * 0.8), behavior: 'smooth' });
+  });
+  next.addEventListener('click', () => {
+    track.scrollBy({ left: track.clientWidth * 0.8, behavior: 'smooth' });
+  });
+  track.addEventListener('scroll', updateArrows, { passive: true });
+  window.addEventListener('resize', updateArrows);
+  updateArrows();
+}
+
+async function loadPersonal() {
+  try {
+    const json = await apiFetchUser('/api/dashboard');
+    const data = json.data || {};
+    renderRecent(data.history);
+    renderPlaylists(data.playlists);
+    renderRecommendations(data.recommendation);
+  } catch (err) {
+    // Falha silenciosa: o painel de canais continua funcional.
+    console.warn('loadPersonal:', err.message);
+  }
+}
+
+// ── Salvar na playlist (painel no modal do player) ──────────
+let _savePlaylists = [];
+
+async function loadSavePlaylists() {
+  const json = await apiFetchUser('/api/user/playlists?limit=100');
+  _savePlaylists = (json.data && json.data.items) || [];
+  while (savePlaylistSelect.options.length > 0) savePlaylistSelect.remove(0);
+  if (!_savePlaylists.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Nenhuma playlist ainda';
+    savePlaylistSelect.appendChild(opt);
+    return;
+  }
+  _savePlaylists.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = `${p.name} (${p.channelCount || 0})`;
+    savePlaylistSelect.appendChild(opt);
+  });
+}
+
+function showSaveMsg(message, ok) {
+  if (!savePanelMsg) return;
+  savePanelMsg.textContent = message;
+  savePanelMsg.classList.toggle('save-panel-msg--ok', !!ok);
+  savePanelMsg.classList.toggle('save-panel-msg--err', !ok);
+  savePanelMsg.hidden = false;
+}
+
+saveToPlaylistBtn?.addEventListener('click', async () => {
+  if (!_currentChannel?.id) return;
+  savePanel.hidden = false;
+  showSaveMsg('', false);
+  savePanelMsg.hidden = true;
+  try {
+    await loadSavePlaylists();
+    const status = await apiFetchUser(`/api/user/playlists/status/${encodeURIComponent(_currentChannel.id)}`);
+    if (status.data) showSaveMsg(`Este canal já está salvo em "${status.data.name}".`, true);
+  } catch (_) { /* segue disponível para tentar salvar */ }
+});
+
+saveChannelBtn?.addEventListener('click', async () => {
+  if (!_currentChannel?.id) return;
+  const chId = _currentChannel.id;
+  const newName = saveNewPlaylistName ? saveNewPlaylistName.value.trim() : '';
+  try {
+    if (newName) {
+      await apiFetchUser('/api/user/playlists/create-with-channel', {
+        method: 'POST',
+        body: JSON.stringify({ name: newName, channelId: chId }),
+      });
+      showSaveMsg(`Playlist "${newName}" criada com o canal.`, true);
+    } else {
+      const pid = savePlaylistSelect.value;
+      if (!pid) { showSaveMsg('Selecione uma playlist ou crie uma nova.', false); return; }
+      await apiFetchUser(`/api/user/playlists/${encodeURIComponent(pid)}/channels`, {
+        method: 'POST',
+        body: JSON.stringify({ channelId: chId }),
+      });
+      showSaveMsg('Canal salvo na playlist.', true);
+    }
+    if (saveNewPlaylistName) saveNewPlaylistName.value = '';
+    loadPersonal().catch(() => {});
+  } catch (err) {
+    showSaveMsg(err.message || 'Falha ao salvar o canal.', false);
   }
 });
 
@@ -493,6 +799,9 @@ async function init() {
     ensureFullDataset().then(() => {
       populateCategoryFilter();
     }).catch(() => {});
+    loadPersonal();
+    loadTrending();
+    startRealtimePersonal();
     return;
   }
 
@@ -503,7 +812,17 @@ async function init() {
     await Promise.all([fetchAllChannels(), fetchCategories()]);
     populateCategoryFilter();
     render();
+    loadPersonal();
+    loadTrending();
+    startRealtimePersonal();
   } catch (_) { /* erro já exibido no grid */ }
+}
+
+// Realtime: atualiza histórico/playlists/recomendações periodicamente.
+// O helper /js/realtime.js não sobrepõe requisições e pausa em aba oculta.
+function startRealtimePersonal() {
+  if (!window.Realtime) return;
+  Realtime.poll({ name: 'dashboard-personal', fn: loadPersonal, interval: 30000 });
 }
 
 init();

@@ -5,7 +5,7 @@
 
 /* ── Layout principal ────────────────────────────────────── */
 .dashboard-main {
-  max-width: 1200px;
+  max-width: 90%;
   margin: 0 auto;
   padding: 40px 20px;
   min-height: calc(100vh - 64px);
@@ -557,4 +557,255 @@
 @media (max-width: 480px) {
   .channel-grid      { grid-template-columns: 1fr; }
   .modal-container   { border-radius: var(--radius-lg); }
+}
+
+/* ?"?Se�es pessoais (recentes/playlists/recomenda��es) ?"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"? */
+
+.personal-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin-bottom: 26px;
+}
+
+.personal-block {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+
+.personal-block--reco {
+  border-color: hsla(190, 100%, 50%, 0.35);
+}
+
+.personal-block--trending {
+  border-color: hsla(35, 100%, 55%, 0.30);
+}
+
+/* Cartões pôster dos carrosséis de tendências (filmes e séries). */
+.pcard--poster {
+  flex: 0 0 128px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+
+.pcard--poster .pcard-body {
+  padding: 8px 10px 10px;
+}
+
+.tcard-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: hsla(0, 0%, 100%, 0.04);
+}
+
+.tcard-img--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.personal-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.personal-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin: 0;
+}
+
+.personal-link {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.personal-note {
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+
+.personal-cards {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 2px;
+  scrollbar-width: none;
+}
+
+.personal-cards::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel {
+  position: relative;
+}
+
+.carousel__btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.carousel__btn:hover {
+  background: var(--bg-panel);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.carousel__btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.carousel__btn--prev { left: -14px; }
+.carousel__btn--next { right: -14px; }
+
+.pcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  flex: 0 0 200px;
+  scroll-snap-align: start;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.pcard:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.pcard-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: hsla(0, 0%, 100%, 0.04);
+  flex-shrink: 0;
+}
+
+.pcard-logo-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.pcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pcard-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcard-cat {
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcard-extra {
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.pcard-static { cursor: default; }
+.pcard-static:hover { transform: none; border-color: var(--border); }
+
+.pcard-reco .pcard-reason {
+  font-size: 11px;
+  color: var(--fg-subtle);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pcard-reco .pcard-name { color: var(--primary); }
+
+/* ?"?Painel "Salvar na playlist" ?"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"? */
+
+.save-panel {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.save-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.save-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.save-panel-new {
+  display: flex;
+  gap: 8px;
+}
+
+.save-panel-new .form-input { flex: 1; }
+
+.save-panel-msg { font-size: 12px; }
+.save-panel-msg--ok   { color: hsl(142, 70%, 45%); }
+.save-panel-msg--err  { color: hsl(0, 70%, 55%); }
+
+@media (max-width: 768px) {
+  .carousel__btn {
+    display: none;
+  }
 }

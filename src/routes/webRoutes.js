@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { resolveUser, requireWebAuth, redirectIfAuthenticated, requireWebRole } = require('../middlewares/webAuth');
 const M3UService = require('../services/m3uService');
+const config = require('../config/app');
 const { toPublicChannels } = require('../utils/publicChannel');
 
 const m3uService = M3UService.getShared();
@@ -13,14 +14,6 @@ const m3uService = M3UService.getShared();
 router.get('/', resolveUser, (req, res) => {
   res.render('pages/index', {
     title: 'SvenTV',
-    user: req.user || null,
-  });
-});
-
-// Documentação
-router.get('/docs', resolveUser, (req, res) => {
-  res.render('pages/docs', {
-    title: 'Documentação — SvenTV',
     user: req.user || null,
   });
 });
@@ -45,6 +38,41 @@ router.get('/register', redirectIfAuthenticated, (req, res) => {
     title: 'Registrar — SvenTV',
     user: null,
     flash,
+    termsVersion: config.terms.version,
+  });
+});
+
+// Recuperação de senha — passo 1 (solicitar código)
+router.get('/forgot-password', redirectIfAuthenticated, (req, res) => {
+  const flash = req.session?.flash || null;
+  if (req.session) req.session.flash = null;
+  res.render('pages/forgot-password', {
+    title: 'Recuperar senha — SvenTV',
+    user: null,
+    flash,
+    termsVersion: config.terms.version,
+  });
+});
+
+// Recuperação de senha — passo 2 (informar código + nova senha)
+router.get('/reset-password', (req, res) => {
+  const flash = req.session?.flash || null;
+  if (req.session) req.session.flash = null;
+  res.render('pages/reset-password', {
+    title: 'Redefinir senha — SvenTV',
+    user: null,
+    flash,
+    email: req.query.email || '',
+    termsVersion: config.terms.version,
+  });
+});
+
+// Termos de Uso — página institucional pública (sem autenticação)
+router.get('/termos', resolveUser, (req, res) => {
+  res.render('pages/termos', {
+    title: 'Termos de Uso — SvenTV',
+    user: req.user || null,
+    termsVersion: config.terms.version,
   });
 });
 
@@ -80,6 +108,30 @@ router.get('/dashboard', requireWebAuth, (req, res) => {
 router.get('/profile', requireWebAuth, (req, res) => {
   res.render('pages/profile', {
     title: 'Meu Perfil — SvenTV',
+    user: req.user,
+  });
+});
+
+router.get('/playlists', requireWebAuth, (req, res) => {
+  res.render('pages/playlists', {
+    title: 'Minhas Playlists — SvenTV',
+    user: req.user,
+  });
+});
+
+router.get('/guia', requireWebAuth, (req, res) => {
+  // EPG_ENABLED=false → feature desligada: sem página (link some da navbar e
+  // aqui redireciona). EPG_URL ausente NÃO bloqueia a página: a grade abre
+  // com o estado vazio ("sem programação") até a URL ser configurada.
+  const epgEnabled = Boolean(config.epg.enabled);
+  if (!epgEnabled) {
+    if (req.session) {
+      req.session.flash = { type: 'info', message: 'O Guia de canais está desativado.' };
+    }
+    return res.redirect('/dashboard');
+  }
+  res.render('pages/guia', {
+    title: 'Guia de Canais — SvenTV',
     user: req.user,
   });
 });

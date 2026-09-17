@@ -12,20 +12,15 @@ class M3UService {
   constructor() {
     this.channels = [];
     this.m3uFiles = [
-
-      // ── Arquivo local (descomente para usar) ──────────────────
-      // path.join(__dirname, '../../SvenTvChannelsBACKUP.m3u'),
-
+      
       // ── URLs externas (ativas) ────────────────────────────────
       './SvenTvChannelsBACKUP.m3u'
-
-      // Outras urls externas, ex:
-      // 'https://raw.githubusercontent.com/helenfernanda/gratis/main/iptvlegal.m3u'
-
 
     ];
     // Carrega os canais de forma assíncrona (suporta download de URLs)
     this.loadPromise = this.loadChannels();
+    // Revisão da lista: incrementa a cada (re)carga — alimenta ETags.
+    this.version = 0;
   }
 
   /**
@@ -96,6 +91,9 @@ class M3UService {
 
     // Remove duplicatas baseadas no nome e URL
     this.removeDuplicates();
+
+    // Nova revisão da lista — invalida ETags emitidas com o conteúdo antigo.
+    this.version += 1;
 
     console.log(`🔄 Após remoção de duplicatas: ${this.channels.length} canais únicos`);
   }
@@ -356,6 +354,15 @@ class M3UService {
    */
   getAllChannels() {
     return this.channels;
+  }
+
+  /**
+   * Revisão da lista processada (incrementada a cada load/reload).
+   * Usada para computar ETags — a lista vira outro recurso quando muda.
+   * @returns {number}
+   */
+  getVersion() {
+    return this.version || 0;
   }
 
   /**

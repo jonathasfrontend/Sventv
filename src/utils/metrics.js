@@ -29,6 +29,12 @@ const counters = {
   channelStateCacheHits: 0,
   channelStateCacheMisses: 0,
   channelStatePersistenceFailures: 0,
+  // Persistência do failover (channel_health)
+  channelHealthPersistenceFailures: 0,
+  // Alertas operacionais (admin)
+  alertsSent: 0,
+  alertsFailed: 0,
+  alertsDebounced: 0,
   // Analytics
   eventsIngested: 0,
   sessionsStarted: 0,
@@ -40,6 +46,8 @@ const counters = {
   retentionRuns: 0,
   retainedEventsDeleted: 0,
   retainedSessionsDeleted: 0,
+  retentionRequestUsageDeleted: 0,
+  retentionAuditLogsDeleted: 0,
   // Recuperação de senha
   passwordResetRequested: 0,
   passwordResetSuccessful: 0,

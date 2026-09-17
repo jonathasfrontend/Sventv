@@ -29,10 +29,10 @@ const InputError = (message, statusCode = 422, code = 'VALIDATION') => {
   return e;
 };
 
-const channelSnapshot = (channel) => {
-  if (!channel) return { name: null, logo: null, category: null };
+const channelSnapshot = (channel, channelIdFallback = null) => {
+  if (!channel) return { name: channelIdFallback, logo: null, category: null };
   return {
-    name: channel.name ? String(channel.name).slice(0, 255) : null,
+    name: channel.name ? String(channel.name).slice(0, 255) : (channelIdFallback || null),
     logo: channel.logo ? String(channel.logo).slice(0, 512) : null,
     category: channel.category ? String(channel.category).slice(0, 120) : null,
   };
@@ -115,7 +115,9 @@ const listPlaylistChannels = async (userId, playlistId, { limit = 50, offset = 0
   return {
     items: rows.map((r) => ({
       id: r.channelId,
-      name: r.channelName,
+      // channelName é nullable no banco: nunca devolver label null —
+      // o channelId é um label estável e não-sensível.
+      name: r.channelName || r.channelId,
       logo: r.channelLogo,
       category: r.channelCategory,
     })),
@@ -195,7 +197,7 @@ const addChannel = async (userId, playlistId, channelId, channelMeta) => {
     throw InputError('Esta playlist atingiu o limite de canais.', 422, 'PLAYLIST_FULL');
   }
 
-  const meta = channelSnapshot(channelMeta);
+  const meta = channelSnapshot(channelMeta, channelId);
   const position = count;
 
   try {
@@ -240,7 +242,7 @@ const createPlaylistWithChannel = async (userId, { name, description = '' }, cha
   });
   if (existing) throw _alreadySavedError(existing.playlistId, existing.playlist.name);
 
-  const meta = channelSnapshot(channelMeta);
+  const meta = channelSnapshot(channelMeta, channelId);
 
   try {
     const playlist = await prisma.$transaction(async (tx) => {

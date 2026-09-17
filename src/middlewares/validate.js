@@ -213,6 +213,65 @@ const schemas = {
     reason: Joi.string().trim().max(255).allow('', null).optional(),
   }),
 
+  // Admin — lote de estados de canais (máx. 50; um item inválido NUNCA
+  // derruba o lote — o controller processa cada um independentemente).
+  adminBulkChannelState: Joi.object({
+    items: Joi.array()
+      .min(1)
+      .max(50)
+      .required()
+      .items(
+        Joi.object({
+          channelId: Joi.string().trim().max(255).required().messages({
+            'any.required': 'channelId é obrigatório por item.',
+          }),
+          state: Joi.string().trim().valid('live', 'maintenance', 'blocked').required().messages({
+            'any.only': 'Estado inválido. Use "live", "maintenance" ou "blocked".',
+            'any.required': 'state é obrigatório por item.',
+          }),
+          reason: Joi.string().trim().max(255).allow('', null).optional(),
+        })
+      )
+      .messages({
+        'array.min': 'Envie ao menos um canal.',
+        'array.max': 'Limite de 50 canais por lote.',
+        'any.required': 'items é obrigatório.',
+      }),
+  }),
+
+  // Admin — lote de ações sobre usuários (proteções por item: self-lockout,
+  // último admin ativo e confirm:true para exclusão são aplicados no
+  // controller, nunca contornados pelo schema).
+  adminBulkUsers: Joi.object({
+    items: Joi.array()
+      .min(1)
+      .max(50)
+      .required()
+      .items(
+        Joi.object({
+          userId: Joi.string().trim().max(255).required().messages({
+            'any.required': 'userId é obrigatório por item.',
+          }),
+          action: Joi.string()
+            .trim()
+            .valid('block', 'unblock', 'promote', 'demote', 'delete')
+            .required()
+            .messages({
+              'any.only': 'Ação inválida. Use block, unblock, promote, demote ou delete.',
+              'any.required': 'action é obrigatória por item.',
+            }),
+          reason: Joi.string().trim().max(255).allow('', null).optional(),
+          // Obrigatório apenas para delete; o controller exige por item.
+          confirm: Joi.boolean().valid(true).optional(),
+        })
+      )
+      .messages({
+        'array.min': 'Envie ao menos um usuário.',
+        'array.max': 'Limite de 50 usuários por lote.',
+        'any.required': 'items é obrigatório.',
+      }),
+  }),
+
   playbackEvent: Joi.object({
     sessionId: Joi.string().trim().min(8).max(80).required().messages({
       'any.required': 'sessionId é obrigatório.',

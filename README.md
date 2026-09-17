@@ -381,7 +381,7 @@ Três tipos de token JWT, com segredos distintos:
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| GET | `/api/channels` | API | Lista completa; `?page=&limit=` opcional (cap 500). Sem parâmetros → lista completa (retrocompatível) |
+| GET | `/api/channels` | API | Lista completa; `?page=&limit=` opcional (cap 500). Sem parâmetros → lista completa (retrocompatível) com **ETag** (responde **304** com `If-None-Match` válido; o valor muda quando a playlist ou um estado de canal muda; `Cache-Control: no-cache`) |
 | GET | `/api/channels/stats` | API | Totais por categoria/formato/fonte |
 | GET | `/api/channels/categories` | API | Categorias disponíveis |
 | GET | `/api/channels/search?q=` | API | Busca por nome, cleanName, categoria ou tvgId |
@@ -431,7 +431,9 @@ com cache em memória (TTL `TRENDING_CACHE_TTL_MS`) e **fail-open**: provedor of
 desligado (`TRENDING_ENABLED=false`) ou sem resposta → listas vazias com `success: true`
 (os carrosséis ficam ocultos no frontend), **nunca 500**. Só saem metadados públicos
 (título, imagens, gênero, duração, logo) — nenhuma URL de stream, nenhum IP, e a URL
-do provedor nunca aparece nas respostas nem nos logs.
+do provedor nunca aparece nas respostas nem nos logs. Na dashboard a seção é **re-pollada
+a cada 30 min** (o cache server-side dura 30 min — o polling de 30s ficaria repetindo o
+mesmo snapshot; helper `Realtime` não sobrepõe requisições e pausa em aba oculta).
 
 ### Playback (session **ou** API **ou** playback do canal)
 
@@ -468,6 +470,17 @@ para não atrapalhar operações legítimas. Respostas de usuários usam a **DTO
 | POST | `/api/admin/metrics/aggregate` | Backfill manual da agregação diária (máx. 90 dias) |
 | GET | `/api/admin/audit-logs?limit=&page=&action=` | Consulta da trilha de auditoria |
 | GET | `/api/admin/epg/unmatched` | Relatório de canais EPG sem match na M3U (contadores + amostras) — audita `admin.epg.unmatched_view` |
+| PUT | `/api/admin/channels/bulk-state` | Estado em lote (≤50 itens): `{ items: [{ channelId, state, reason? }] }`. Itens **independentes** (erro num item não derruba o lote); resposta `{ applied, failed, results[] }`. Audita `admin.channel.state` por item + `admin.channel.bulk_state` |
+| PUT | `/api/admin/users/bulk` | Ações em lote (≤50 itens): `{ items: [{ userId, action: block\|unblock\|promote\|demote\|delete, reason?, confirm? }] }`. Guardas por item: anti-self-lockout, último admin ativo e `confirm:true` para delete (nunca apenas `confirm()` no navegador). Audita `admin.users.bulk` |
+| GET | `/api/admin/export/analytics.csv?period=` | Exporta KPIs por canal + série diária como **CSV seguro** (streaming com cursor, `today\|7d\|30d\|90d\|custom`) — audita `admin.analytics.export_csv` |
+| GET | `/api/admin/export/audit-logs.csv?from=&to=` | Exporta a trilha de auditoria (`from`/`to` obrigatórios, `from ≤ to`, máx. **366 dias** → 422; streaming com cursor composto `(createdAt,id)`) — audita `admin.audit_logs.export_csv` |
+
+Os dois fluxos de **lote respeitam as mesmas proteções das rotas individuais** (canal inexistente vira
+item-falha com `failReason`; usuário inexistente, auto-bloqueio, último admin e delete sem `confirm`
+também viram item-falha — a operação legítima nunca falha por causa de um item inválido no mesmo lote).
+Os **CSVs são neutros contra injeção de fórmula** (`src/utils/csv.js`): células iniciando com `=`, `+`,
+`-`, `@`, tab ou CR recebem prefixo `'` e a cotação RFC 4180 é aplicada; o `Content-Disposition` é
+sanitizado. Streaming entrega linha a linha (memória estável, jamais carrega a tabela inteira).
 
 ---
 
@@ -600,7 +613,7 @@ analyticsService            →  métricas admin ao vivo + agregação diária +
 ### Realtime por polling (`public/js/realtime.js`)
 
 - `Realtime.poll({ name, fn, interval })`: agenda sem sobrepor chamadas em andamento, **pausa em aba oculta** e dispara tick imediato ao voltar.
-- Integrado: dashboard (30s), playlists (30s), admin (30s — métricas/auditoria sempre; canais só na aba aberta; analytics apenas no período `today`).
+- Integrado: dashboard (pessoal 30s + **trending 30min**), playlists (30s), admin (30s — métricas/auditoria sempre; canais só na aba aberta; analytics apenas no período `today`).
 - Escolha de arquitetura: **polling** (não SSE/WebSocket) — compatível com serverless, sem estado persistente.
 
 ### Player (`src/Player/`)

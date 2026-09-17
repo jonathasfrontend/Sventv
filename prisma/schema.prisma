@@ -293,6 +293,24 @@ model ChannelState {
   @@map("channel_states")
 }
 
+// ── Failover persistido de canais ───────────────────────────
+// Snapshot do ACTIVE SOURCE na ÚLTIMA TRANSIÇÃO de fonte (primary|backup).
+// A fonte de verdade do failover continua sendo o ciclo automático em
+// memória (ChannelHealthService); a tabela só recebe escrita quando há
+// TROCA de fonte (0 escritas em checagens normais), então permanece pequena
+// mesmo com checks a cada minuto. `consecutiveFails` é apenas um snapshot
+// informativo no momento da troca — os contadores vivos ficam em memória e
+// o cold start restaura somente o activeSource.
+model ChannelHealth {
+  channelId        String    @id @map("channel_id") @db.VarChar(255)
+  activeSource     String    @map("active_source") @db.VarChar(20)
+  consecutiveFails Int       @default(0) @map("consecutive_fails")
+  lastSwitchAt     DateTime? @map("last_switch_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("channel_health")
+}
+
 model UserMetric {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String   @map("user_id") @db.Uuid

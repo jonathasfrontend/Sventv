@@ -17,6 +17,7 @@ const net = require('net');
 const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 /**
  * Controller responsável pelas operações relacionadas aos canais de TV
@@ -51,14 +52,10 @@ class ChannelController {
       this.playerTemplate = null;
     }
 
-    // Serviço de verificação de saúde dos canais
+    // Serviço de verificação de saúde dos canais (singleton compartilhado —
+    // 1 ciclo de checks + 1 cache de failover por lambda).
     try {
-      this.channelHealthService = new ChannelHealthService(this.m3uService, {
-        intervalMs: config.health.checkIntervalMs,
-        requestTimeout: config.health.requestTimeoutMs,
-        failoverThreshold: config.health.failoverThreshold,
-        failbackMinMs: config.health.failbackMinMs,
-      });
+      this.channelHealthService = ChannelHealthService.getShared();
     } catch (e) {
       this.channelHealthService = null;
       console.error('Erro ao inicializar ChannelHealthService:', e && e.message);
@@ -94,6 +91,31 @@ class ChannelController {
           total: all.length,
           totalPages: Math.max(Math.ceil(all.length / limit), 1),
         };
+      }
+
+      // ETag apenas na forma compacta (sem paginação). A versão do M3U e o
+      // estado agregado dos canais determinam o conteúdo: qualquer mudança na
+      // playlist ou num estado administrativo invalida o valor. Cache-Control
+      // no-cache pede revalidação — o cliente manda If-None-Match e recebe 304
+      // (sem corpo) quando nada mudou.
+      if (!pagination) {
+        const states = this.channelStateService
+          ? this.channelStateService.all()
+          : [];
+        const stateFrag = states
+          .map((e) => `${e.id}:${e.state}`)
+          .sort()
+          .join(',');
+        const etag = crypto
+          .createHash('sha256')
+          .update(`${this.m3uService.getVersion()}|${stateFrag}`)
+          .digest('hex');
+        const quoted = `"${etag}"`;
+        res.setHeader('ETag', quoted);
+        res.setHeader('Cache-Control', 'no-cache');
+        if (req.headers['if-none-match'] === quoted) {
+          return res.status(304).end();
+        }
       }
 
       res.status(200).json({
@@ -794,7 +816,11 @@ class ChannelController {
       if (this.channelHealthService) {
         if (upstream) {
           this.channelHealthService.reportResult(id, candidates[usedCandidateIndex], true);
-        } else if (candidates[0]) {
+        } else if (candidates[0] && (!netError || netError.code !== 'SSRF_BLOCKED')) {
+          // Só reporta falha de fonte quando a causa é REALMENTE de rede/
+          // origem. SSRF_BLOCKED é uma negativa da SEGURANÇA (destino
+          // proibido), não uma falha da fonte — reportá-lo aqui inflaria o
+          // failCount e poderia disparar failover/backup para uma fonte sã.
           this.channelHealthService.reportResult(id, candidates[0], false);
         }
       }

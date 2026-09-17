@@ -230,6 +230,45 @@ const config = {
     failoverThreshold: parseInt(process.env.HEALTH_FAILOVER_THRESHOLD, 10) || 2,
     // Tempo mínimo (ms) na fonte backup antes de tentar voltar à primária.
     failbackMinMs: parseInt(process.env.HEALTH_FAILBACK_MIN_MS, 10) || 120_000,
+    // Persistência do failover (tabela channel_health, via
+    // channelHealthRepository): a fonte de verdade é o ciclo automático em
+    // memória; a tabela guarda APENAS o activeSource na última TRANSIÇÃO
+    // (0 escritas em checks sem troca) para sobreviver a cold start.
+    // Kill switch: CHANNEL_HEALTH_PERSIST_ENABLED=false → 100% em memória.
+    persistEnabled: process.env.CHANNEL_HEALTH_PERSIST_ENABLED !== 'false',
+  },
+
+  // ---- Retenção de dados operacionais ----
+  // A limpeza é disparada via cron (POST /api/internal/retention/run) ou
+  // manualmente pelo admin (POST /api/admin/retention/run). 0 desativa a
+  // limpeza para aquele tipo sem remover as variáveis de ambiente.
+  retention: {
+    // request_usage: buckets de rate limit por usuário (granularidade fina).
+    requestUsageDays: parseInt(process.env.REQUEST_USAGE_RETENTION_DAYS, 10) || 30,
+    // audit_logs: trilha de auditoria (obrigação legal/compliance).
+    auditLogDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS, 10) || 90,
+  },
+
+  // ---- Jobs internos (Vercel Cron / endpoints internos) ----
+  // Segredo compartilhado enviado pelo cron da Vercel (header X-Cron-Secret
+  // ou Authorization: Bearer). NUNCA é logado nem exposto em respostas.
+  // Vazio → rotas internas desligadas (fail-closed, 404 genérico).
+  cron: {
+    secret: process.env.CRON_SECRET || '',
+  },
+
+  // ---- Alertas operacionais (admin) ----
+  // Eventos relevantes (failover/failback de canal, falha de SMTP, queda do
+  // Redis com fallback) notificam o admin via e-mail e/ou webhook. Fire-and-
+  // forget: falha de envio NUNCA derruba o fluxo principal. O cooldown é por
+  // evento e por lambda (limitação documentada — serverless não tem timer
+  // único). A URL do webhook é SEGREDO: nunca logar/expor.
+  alerts: {
+    enabled: process.env.ALERTS_ENABLED !== 'false',
+    adminEmail: process.env.ADMIN_ALERT_EMAIL || '',
+    webhookUrl: process.env.ALERT_WEBHOOK_URL || '',
+    // Distância mínima entre duas notificações do MESMO evento (ms).
+    cooldownMs: parseInt(process.env.ALERT_COOLDOWN_MS, 10) || 1_800_000,
   },
 
   // ---- CORS ----

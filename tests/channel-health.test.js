@@ -23,6 +23,10 @@ function makeHealth(state) {
     failoverThreshold: 2,
     failbackMinMs: 0,
     minSwitchMs: 0,
+    // Unit test puro em memória: sem persistência (transições NÃO tocam o
+    // Postgres aqui — o contrato de persistência vive em channel-health-
+    // persistence.test.js com repos/temps fake).
+    persistEnabled: false,
   });
   svc.m3uService = {
     getAllChannels: () => [channel],

@@ -801,7 +801,7 @@ async function init() {
     }).catch(() => {});
     loadPersonal();
     loadTrending();
-    startRealtimePersonal();
+    startRealtime();
     return;
   }
 
@@ -814,15 +814,20 @@ async function init() {
     render();
     loadPersonal();
     loadTrending();
-    startRealtimePersonal();
+    startRealtime();
   } catch (_) { /* erro já exibido no grid */ }
 }
 
-// Realtime: atualiza histórico/playlists/recomendações periodicamente.
-// O helper /js/realtime.js não sobrepõe requisições e pausa em aba oculta.
-function startRealtimePersonal() {
+// Realtime: histórico/playlists/recomendações a cada 30s e trending a cada
+// TRENDING_POLL_MS (30min — alinhado ao TTL do cache server-side; atualizar
+// de 30 em 30s apenas repetiria o mesmo snapshot). O helper /js/realtime.js
+// não sobrepõe requisições e pausa em aba oculta.
+const TRENDING_POLL_MS = 30 * 60 * 1000;
+
+function startRealtime() {
   if (!window.Realtime) return;
   Realtime.poll({ name: 'dashboard-personal', fn: loadPersonal, interval: 30000 });
+  Realtime.poll({ name: 'dashboard-trending', fn: loadTrending, interval: TRENDING_POLL_MS });
 }
 
 init();

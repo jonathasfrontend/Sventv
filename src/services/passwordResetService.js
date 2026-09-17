@@ -30,6 +30,7 @@ const bcrypt = require('bcryptjs');
 
 const passwordResetCodeRepository = require('../repositories/passwordResetCodeRepository');
 const emailService = require('../services/emailService');
+const alertService = require('../services/alertService');
 const { passwordPolicyErrors } = require('../utils/passwordPolicy');
 
 class PasswordResetError extends Error {
@@ -96,6 +97,8 @@ const passwordResetService = {
     } catch (err) {
       metrics.inc('passwordResetSmtpFailures');
       logger.warn(`🔒 Recuperação: falha de envio de código gerado (userId=${maskId(user.id)}): ${err && err.message}`);
+      // Alerta operacional (fire-and-forget — nunca bloqueia/derruba o fluxo).
+      alertService.notify('email.smtp_failure', { context: 'password_reset' });
       await auditService.audit({ action: 'PASSWORD_RESET_SEND_FAILED', req, userId: user.id, email: user.email, meta: { reason: err.message } });
       // Cliente recebe a MESMA resposta neutra (como se o fluxo seguisse).
       return { ok: true, sent: false };

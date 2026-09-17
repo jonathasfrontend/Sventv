@@ -8,6 +8,7 @@ const adminRoutes = require('./adminRoutes');
 const userRoutes = require('./userRoutes');
 const playbackRoutes = require('./playbackRoutes');
 const trendingRoutes = require('./trendingRoutes');
+const internalRoutes = require('./internalRoutes');
 
 const router = express.Router();
 
@@ -93,5 +94,9 @@ router.use('/trending', trendingRoutes);
 
 // Ingestão de eventos de playback (transições + heartbeat)
 router.use('/playback', playbackRoutes);
+
+// Rotas internas (Vercel Cron / jobs) — protegidas por CRON_SECRET e
+// fora das rotas de API autenticadas por usuário.
+router.use('/internal', internalRoutes);
 
 module.exports = router;

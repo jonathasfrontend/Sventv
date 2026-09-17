@@ -753,6 +753,73 @@
 
 .user-check input { margin-top: 3px; }
 
+/* ── Seleção em lote + exportação CSV ──────────────────────── */
+.ch-col-select { width: 36px; }
+
+.ch-row-check,
+.user-row-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #7c6cf0);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.admin-tabpanel .ch-col-select input {
+  margin: 0;
+}
+
+.user-card-head .user-row-check {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.admin-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.admin-bulk-bar[hidden] { display: none; }
+
+.bulk-badge {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.admin-bulk-bar .form-input {
+  min-width: 150px;
+  flex: 0 1 220px;
+}
+
+.admin-bulk-bar .btn {
+  flex: 0 0 auto;
+}
+
+.admin-date-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.form-input--date {
+  min-width: 130px;
+  flex: 0 1 150px;
+}
+
 @media (max-width: 560px) {
   .user-modal-head { flex-wrap: wrap; }
   .user-modal-body { padding: 8px 14px 16px; }

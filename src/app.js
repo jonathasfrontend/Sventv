@@ -21,6 +21,7 @@ const routes = require('./routes');
 const webRoutes = require('./routes/webRoutes');
 const M3UService = require('./services/m3uService');
 const ChannelStateService = require('./services/channelStateService');
+const ChannelHealthService = require('./services/channelHealthService');
 const { ensureDBConnection } = require('./config/database');
 const { errorHandler, notFound, requestLogger } = require('./middlewares/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
@@ -119,6 +120,7 @@ app.use('/Player', express.static(path.join(__dirname, 'Player')));
 // login sempre refletido no SSR).
 const sharedM3U = M3UService.getShared();
 const channelStates = ChannelStateService.getShared();
+const channelHealth = ChannelHealthService.getShared();
 app.use((req, res, next) => {
   if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
     res.setHeader('Cache-Control', 'no-store');
@@ -135,6 +137,11 @@ app.use(async (_req, _res, next) => {
       // Hidrata o estado administrativo persistido (Postgres) no cold start.
       channelStates.ensureLoaded().catch((e) => {
         console.error('Falha ao carregar estados de canal:', e.message);
+      }),
+      // Hidrata o active source do failover (Postgres) no cold start, para
+      // que os canais não "voltem" para a primária na primeira lambda fria.
+      channelHealth.ensureLoaded().catch((e) => {
+        console.error('Falha ao carregar failover de canais:', e.message);
       }),
     ]);
     // Espelha o estado persistido nos objetos M3U (`channel.state` alimenta

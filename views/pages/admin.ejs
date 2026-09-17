@@ -76,6 +76,7 @@
             <option value="90d">Últimos 90 dias</option>
           </select>
           <button class="btn btn-ghost btn-sm" id="loadAnalyticsBtn">Carregar</button>
+          <button class="btn btn-ghost btn-sm" id="exportAnalyticsBtn" title="Baixar CSV das métricas do período">Exportar CSV</button>
         </div>
       </div>
       <div class="admin-analytics-loading" id="analyticsLoading" hidden>Consultando agregados...</div>
@@ -116,7 +117,14 @@
           <select id="auditActionFilter" class="form-input">
             <option value="">Todas as ações</option>
           </select>
+          <label class="admin-date-label">De
+            <input type="date" id="auditExportFrom" class="form-input form-input--date" aria-label="Data inicial da exportação">
+          </label>
+          <label class="admin-date-label">Até
+            <input type="date" id="auditExportTo" class="form-input form-input--date" aria-label="Data final da exportação">
+          </label>
           <button class="btn btn-ghost btn-sm" id="loadAuditBtn">Recarregar</button>
+          <button class="btn btn-ghost btn-sm" id="exportAuditBtn" title="Baixar CSV do intervalo de datas">Exportar CSV</button>
         </div>
       </div>
       <div class="admin-table-wrap">
@@ -169,10 +177,25 @@
         <button class="btn btn-ghost btn-sm" id="reloadChannelsBtn" title="Recarregar lista de canais do arquivo M3U">Recarregar M3U</button>
       </div>
 
+      <div class="admin-bulk-bar" id="channelBulkBar" hidden>
+        <span class="bulk-badge" id="channelBulkCount">0 selecionados</span>
+        <select id="channelBulkState" class="form-input" aria-label="Estado a aplicar em lote">
+          <option value="live">Ao vivo</option>
+          <option value="maintenance">Manutenção</option>
+          <option value="blocked">Bloqueado</option>
+        </select>
+        <input type="text" id="channelBulkReason" class="form-input" maxlength="255" placeholder="Motivo (opcional)" autocomplete="off">
+        <button type="button" class="btn btn-primary btn-sm" id="channelBulkApply">Aplicar</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="channelBulkClear">Limpar seleção</button>
+      </div>
+
       <div class="admin-table-wrap">
         <table class="admin-table admin-table--channels">
           <thead>
             <tr>
+              <th class="ch-col-select">
+                <input type="checkbox" id="chSelectAll" aria-label="Selecionar todos os canais filtrados">
+              </th>
               <th class="ch-col-logo"></th>
               <th>Canal</th>
               <th>Categoria</th>
@@ -184,7 +207,7 @@
             </tr>
           </thead>
           <tbody id="channelsTableBody">
-            <tr><td colspan="8">Carregando canais...</td></tr>
+            <tr><td colspan="9">Carregando canais...</td></tr>
           </tbody>
         </table>
       </div>
@@ -222,6 +245,17 @@
       </div>
 
       <div id="adminAlert" class="form-alert form-alert-error" hidden></div>
+
+      <div class="admin-bulk-bar" id="userBulkBar" hidden>
+        <span class="bulk-badge" id="userBulkCount">0 selecionados</span>
+        <input type="text" id="userBulkReason" class="form-input" maxlength="255" placeholder="Motivo (bloqueio)" autocomplete="off">
+        <button type="button" class="btn btn-danger btn-sm" id="userBulkBlock">Bloquear</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="userBulkUnblock">Desbloquear</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="userBulkPromote">Promover</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="userBulkDemote">Rebaixar</button>
+        <button type="button" class="btn btn-danger btn-sm" id="userBulkDelete">Excluir</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="userBulkClear">Limpar seleção</button>
+      </div>
 
       <div class="admin-users-grid" id="usersGrid">
         <div class="admin-users-skeleton">Carregando usuários...</div>

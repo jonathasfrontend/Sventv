@@ -1,5 +1,11 @@
 const axios = require('axios');
 
+const config = require('../config/app');
+const M3UService = require('./m3uService');
+const channelHealthRepository = require('../repositories/channelHealthRepository');
+const alertService = require('./alertService');
+const { inc } = require('../utils/metrics');
+
 /**
  * SvenTV API - ChannelHealthService
  *
@@ -7,13 +13,23 @@ const axios = require('axios');
  * fontes (primaryUrl -> backupUrl, agregadas pelo M3UService).
  *
  * Limitações arquiteturais (serverless):
- * - O estado de health é mantido EM MEMÓRIA (Map), como rate limiters e
- *   StreamLimiter. Na Vercel, cada instância lambda fria recomeça checks;
- *   a camada de segurança do proxy (SSRF guard) nunca depende deste serviço.
+ * - O estado de health (ok/failCount por fonte) é mantido EM MEMÓRIA (Map),
+ *   como rate limiters e StreamLimiter. Na Vercel, cada instância lambda fria
+ *   recomeça checks; a camada de segurança do proxy (SSRF guard) nunca depende
+ *   deste serviço.
+ * - Persistência (channel_health, CHANNEL_HEALTH_PERSIST_ENABLED): apenas o
+ *   ACTIVE SOURCE da ÚLTIMA TRANSIÇÃO é gravado (precisa sobreviver a cold
+ *   start). Cada check normal faz ZERO escritas; só TROCAS de fonte geram um
+ *   upsert. No cold start, ensureLoaded() restaura o activeSource (anulando
+ *   counts em memória — a tabela não guarda contadores vivos).
  * - Anti-flapping: só há troca de fonte após `failoverThreshold` falhas
  *   consecutivas e respeitando `minSwitchMs` entre trocas.
  * - Failback: a primária voltando a responder e o backup falhando — ou após
  *   `failbackMinMs` — faz o canal retornar para a fonte primária.
+ * - Alertas: cada transição (failover/failback) dispara alertService.notify
+ *   (fire-and-forget, com debounce) — nunca bloqueia o ciclo de checagem.
+ *
+ * Singleton: `getShared()` (mesmo padrão de M3UService/ChannelStateService).
  */
 class ChannelHealthService {
   constructor(m3uService = null, options = {}) {
@@ -24,6 +40,17 @@ class ChannelHealthService {
     this.failoverThreshold = options.failoverThreshold ?? 2;
     this.failbackMinMs = options.failbackMinMs ?? this.intervalMs * 2;
     this.minSwitchMs = options.minSwitchMs ?? this.intervalMs;
+
+    // Persistência do active source (0 escritas sem transição):
+    // disponível via opção (testes injetam persistEnabled/repository/clock).
+    this.persistEnabled = Boolean(
+      options.persistEnabled !== undefined
+        ? options.persistEnabled
+        : config.health.persistEnabled
+    );
+    this.repository = options.repository || channelHealthRepository;
+    this.now = options.now || (() => Date.now());
+    this._loadedHealth = null;
 
     if (this.m3uService) {
       this.startAutoChecks();
@@ -115,12 +142,15 @@ class ChannelHealthService {
 
   /**
    * Avalia failover/failback com anti-flapping.
-   * Só atua quando o canal possui mais de uma fonte.
+   * Só atua quando o canal possui mais de uma fonte. Em TRANSIÇÃO real (a
+   * fonte ativa muda) dispara: persistência (0 escritas sem transição),
+   * alerta operacional e métrica. Tudo best-effort — nunca lança.
    */
-  _maybeSwitch(entry) {
-    if (!entry.backup) return;
-    const now = Date.now();
+  async _maybeSwitch(channel, entry) {
+    if (!entry || !entry.backup) return;
+    const now = this.now();
     const cur = entry.activeSource;
+    let next = null;
 
     if (cur === 'primary') {
       const primary = entry.primary;
@@ -130,26 +160,65 @@ class ChannelHealthService {
         backup && backup.ok === true &&
         this._canSwitch(now, entry)
       ) {
-        entry.activeSource = 'backup';
-        entry.lastSwitchAt = now;
+        next = 'backup';
       }
-      return;
+    } else {
+      // ativo = backup → tenta voltar para a primária
+      const primary = entry.primary;
+      const backup = entry.backup;
+      const primaryRevived = primary && primary.ok === true;
+      if (primaryRevived && this._canSwitch(now, entry)) {
+        if ((backup && backup.failCount > 0) || (entry.lastSwitchAt + this.failbackMinMs < now)) {
+          next = 'primary';
+        }
+      }
     }
 
-    // ativo = backup → tenta voltar para a primária
-    const primary = entry.primary;
-    const backup = entry.backup;
-    const primaryRevived = primary && primary.ok === true;
-    if (primaryRevived && this._canSwitch(now, entry)) {
-      if ((backup && backup.failCount > 0) || (entry.lastSwitchAt + this.failbackMinMs < now)) {
-        entry.activeSource = 'primary';
-        entry.lastSwitchAt = now;
-      }
+    if (next && next !== cur) {
+      const prev = cur;
+      entry.activeSource = next;
+      entry.lastSwitchAt = now;
+      this._afterSwitch(channel, entry, prev);
+      await this._persistSwitch(channel, entry, prev);
     }
   }
 
   _canSwitch(now, entry) {
     return !entry.lastSwitchAt || (now - entry.lastSwitchAt) >= this.minSwitchMs;
+  }
+
+  /**
+   * Efeitos colaterais da transição (alerta + métrica). Fire-and-forget:
+   * nunca lança nem bloqueia o ciclo.
+   */
+  _afterSwitch(channel, entry, prev) {
+    const detail = { channelId: channel && channel.id, channelName: channel && channel.name };
+    if (prev === 'primary' && entry.activeSource === 'backup') {
+      alertService.notify('channelHealth.failover', detail);
+    } else if (prev === 'backup' && entry.activeSource === 'primary') {
+      alertService.notify('channelHealth.failback', detail);
+    }
+  }
+
+  /**
+   * Write-through do active source após TRANSIÇÃO. NUNCA chamado em checks
+   * sem troca. Fail-open: falha de banco é logada/contada, não derruba nada.
+   */
+  async _persistSwitch(channel, entry, prev) {
+    if (!this.persistEnabled || !channel || !channel.id) return;
+    const active = entry.activeSource;
+    const failsEntry = entry[active];
+    const fails = failsEntry && typeof failsEntry.failCount === 'number' ? failsEntry.failCount : 0;
+    try {
+      await this.repository.upsertHealth(channel.id, {
+        activeSource: active,
+        consecutiveFails: fails,
+        lastSwitchAt: entry.lastSwitchAt ? new Date(entry.lastSwitchAt) : null,
+      });
+    } catch (error) {
+      inc('channelHealthPersistenceFailures');
+      console.error(`Falha ao persistir failover do canal ${channel.id}:`, error && error.message);
+    }
   }
 
   /**
@@ -178,7 +247,7 @@ class ChannelHealthService {
     }
 
     if (sources.length > 1) {
-      this._maybeSwitch(entry);
+      await this._maybeSwitch(channel, entry);
     }
     return entry;
   }
@@ -189,6 +258,46 @@ class ChannelHealthService {
     // check in parallel but limit concurrency modestly
     const mapping = channels.map(ch => this.checkChannel(ch).catch(() => {}));
     await Promise.all(mapping);
+  }
+
+  /**
+   * Hidrata o active source persistido (cold start). Idempotente e
+   * tolerante a falhas (nunca rejeita). Uma query só.
+   * @returns {Promise<number>} quantidade de canais com failover restaurado
+   */
+  async ensureLoaded() {
+    if (this._loadedHealth) return this._loadedHealth;
+    if (!this.persistEnabled) {
+      this._loadedHealth = Promise.resolve(0);
+      return this._loadedHealth;
+    }
+    this._loadedHealth = this.repository
+      .loadAll()
+      .then((rows) => {
+        let count = 0;
+        for (const row of rows || []) {
+          if (!row || !row.channelId) continue;
+          if (row.activeSource !== 'primary' && row.activeSource !== 'backup') continue;
+          let entry = this.statuses.get(row.channelId);
+          if (!entry) {
+            const chann = this.m3uService ? this.m3uService.getChannelById(row.channelId) : null;
+            entry = this._newEntry(chann);
+            this.statuses.set(row.channelId, entry);
+          }
+          // Apenas o source ativo é restaurado. failCount fica em memória
+          // (0) — a tabela não guarda contadores vivos (snapshot informativo).
+          entry.activeSource = row.activeSource;
+          if (row.lastSwitchAt) entry.lastSwitchAt = new Date(row.lastSwitchAt).getTime();
+          count += 1;
+        }
+        return count;
+      })
+      .catch((error) => {
+        console.error('Falha ao carregar failover de canais:', error && error.message);
+        inc('channelHealthPersistenceFailures');
+        return 0;
+      });
+    return this._loadedHealth;
   }
 
   /**
@@ -298,5 +407,25 @@ class ChannelHealthService {
     };
   }
 }
+
+ChannelHealthService._shared = null;
+
+/**
+ * Instância única compartilhada entre controllers/app (1 ciclo de checks e
+ * 1 cache de failover por lambda). Cria com o M3U compartilhado e os knobs
+ * de config.health.
+ * @returns {ChannelHealthService}
+ */
+ChannelHealthService.getShared = () => {
+  if (!ChannelHealthService._shared) {
+    ChannelHealthService._shared = new ChannelHealthService(M3UService.getShared(), {
+      intervalMs: config.health.checkIntervalMs,
+      requestTimeout: config.health.requestTimeoutMs,
+      failoverThreshold: config.health.failoverThreshold,
+      failbackMinMs: config.health.failbackMinMs,
+    });
+  }
+  return ChannelHealthService._shared;
+};
 
 module.exports = ChannelHealthService;

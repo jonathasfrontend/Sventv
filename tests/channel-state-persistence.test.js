@@ -33,7 +33,13 @@ class FakeHealthService {
   reportResult() {}
   resolveActiveUrl(ch) { return (ch && (ch.url || ch.primaryUrl)) || null; }
   resolveSourceUrls(ch) { return (ch && [ch.url || ch.primaryUrl].filter(Boolean)) || []; }
+  async ensureLoaded() { return 0; }
 }
+FakeHealthService._shared = null;
+FakeHealthService.getShared = () => {
+  if (!FakeHealthService._shared) FakeHealthService._shared = new FakeHealthService();
+  return FakeHealthService._shared;
+};
 require.cache[HEALTH_PATH] = {
   id: HEALTH_PATH,
   filename: HEALTH_PATH,

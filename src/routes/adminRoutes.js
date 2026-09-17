@@ -18,6 +18,9 @@ router.use(requireSessionAuth, requireRole('admin'));
 router.use(['post', 'put', 'delete'], adminWriteLimiter);
 
 // ── Usuários ─────────────────────────────────────────────────
+// Lote ANTES das rotas com :userId (não há conflito de match, mas a ordem
+// deixa a intenção visível e impede surfamento acidental de parâmetro).
+router.put('/users/bulk', validate('adminBulkUsers'), adminController.bulkUserActions);
 router.get('/users', adminController.listUsers);
 router.get('/users/:userId', adminController.getUser);
 router.put('/users/:userId/role', validate('adminChangeRole'), adminController.changeUserRole);
@@ -28,6 +31,8 @@ router.post('/users/:userId/avatar', upload.single('avatar'), adminController.up
 router.delete('/users/:userId', validate('adminDeleteUser'), adminController.deleteUser);
 
 // ── Canais ───────────────────────────────────────────────────
+// Lote de estados ANTES de /channels/:channelId/* (evita qualquer ambiguidade).
+router.put('/channels/bulk-state', validate('adminBulkChannelState'), adminController.bulkChannelState);
 router.get('/channels', adminController.listChannels);
 router.put('/channels/:channelId/state', validate('adminChannelState'), adminController.setChannelState);
 router.post('/channels/reload', adminController.reloadChannels);
@@ -41,5 +46,12 @@ router.get('/metrics/analytics', adminController.getAnalyticsMetrics);
 router.get('/metrics/history', adminController.getHistoricMetricsSeries);
 router.post('/metrics/aggregate', adminController.runAggregation);
 router.get('/audit-logs', adminController.getAuditLogs);
+
+// Exportações CSV (streaming com cursor). GET → fora do adminWriteLimiter.
+router.get('/export/analytics.csv', adminController.exportAnalyticsCSV);
+router.get('/export/audit-logs.csv', adminController.exportAuditLogsCSV);
+
+// Retenção de dados operacionais (manual — espelho do cron interno).
+router.post('/retention/run', adminController.runRetention);
 
 module.exports = router;

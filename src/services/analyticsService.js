@@ -28,6 +28,7 @@ const {
   daysBetween,
   sweepPeak,
 } = require('../utils/analytics');
+const { streamCsv } = require('../utils/csv');
 
 const SESSION_FINAL = ['completed', 'abandoned', 'expired'];
 
@@ -356,6 +357,105 @@ const getHistoricalSeries = async (query) => {
   return out;
 };
 
+// ─── Exportação CSV (analytics) ──────────────────────────────
+// Página por CURSOR (id > last, nunca offset) para não degradar em bancos
+// grandes; o output é streamado linha a linha via streamCsv (res.write).
+
+const PLAYBACK_EXPORT_PAGE = 500;
+
+/**
+ * Iterador assíncrono sobre playback_sessions do período, paginado por
+ * cursor (id crescente). Memória estável por página — o agregador consome
+ * progressivamente.
+ */
+async function* iterPlaybackSessions({ start, end }) {
+  let lastId = null;
+  for (;;) {
+    const rows = await prisma.playbackSession.findMany({
+      where: {
+        startedAt: { gte: start, lte: end },
+        ...(lastId ? { id: { gt: lastId } } : null),
+      },
+      orderBy: { id: 'asc' },
+      take: PLAYBACK_EXPORT_PAGE,
+      select: {
+        id: true,
+        userId: true,
+        channelId: true,
+        channelName: true,
+        channelCategory: true,
+        status: true,
+        startedAt: true,
+        watchDurationMs: true,
+      },
+    });
+    if (rows.length === 0) break;
+    for (const row of rows) yield row;
+    lastId = rows[rows.length - 1].id;
+  }
+}
+
+/**
+ * Emite `analytics.csv`: seção POR CANAL e seção DIÁRIA para o período.
+ * Streama com cursor (leitura) + write por linha (saída). Nunca carrega o
+ * período inteiro em memória — apenas agregações por canal/dia.
+ * @param {import('express').Response} res
+ * @param {{start: Date, end: Date}} range  validado pelo chamador
+ * @returns {Promise<boolean>}
+ */
+async function streamAnalyticsCSV(res, { start, end }) {
+  const byChannel = new Map();
+  const byDay = new Map();
+
+  for await (const s of iterPlaybackSessions({ start, end })) {
+    let c = byChannel.get(s.channelId);
+    if (!c) {
+      c = { id: s.channelId, name: s.channelName || s.channelId, category: s.channelCategory || '', sessions: 0, viewers: new Set(), watchMs: 0 };
+      byChannel.set(s.channelId, c);
+    }
+    c.sessions += 1;
+    c.viewers.add(s.userId);
+    c.watchMs += bigToNumber(s.watchDurationMs);
+
+    const key = dayUtc(s.startedAt).toISOString().slice(0, 10);
+    let d = byDay.get(key);
+    if (!d) {
+      d = { date: key, sessions: 0, viewers: new Set(), watchMs: 0 };
+      byDay.set(key, d);
+    }
+    d.sessions += 1;
+    d.viewers.add(s.userId);
+    d.watchMs += bigToNumber(s.watchDurationMs);
+  }
+
+  const channels = [...byChannel.values()].sort((a, b) => b.watchMs - a.watchMs);
+  const days = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+  const rows = (async function* () {
+    yield ['canal_id', 'canal', 'categoria', 'sessoes', 'espectadores_unicos', 'tempo_total_ms', 'tempo_total', 'tempo_medio_ms'];
+    for (let i = 0; i < channels.length; i++) {
+      const c = channels[i];
+      yield [
+        c.id,
+        c.name,
+        c.category,
+        c.sessions,
+        c.viewers.size,
+        c.watchMs,
+        formatWatchDuration(c.watchMs),
+        c.sessions ? Math.round(c.watchMs / c.sessions) : 0,
+      ];
+    }
+    yield [];
+    yield ['data', 'sessoes', 'espectadores_unicos', 'tempo_total_ms', 'tempo_total'];
+    for (const d of days) {
+      yield [d.date, d.sessions, d.viewers.size, d.watchMs, formatWatchDuration(d.watchMs)];
+    }
+  })();
+
+  return streamCsv(res, { filename: 'analytics.csv' }, ['relatorio_analytics', `periodo_${start.toISOString().slice(0, 10)}_${end.toISOString().slice(0, 10)}`], rows);
+}
+
 // ─── Retenção ────────────────────────────────────────────────
 // Fire-and-forget probabilístico (ver config.analytics.retentionProbability):
 // nem toda execução limpa, evitando lock/load excessivo em serverless.
@@ -394,4 +494,5 @@ module.exports = {
   getAdminMetrics,
   getHistoricalSeries,
   runRetention,
+  streamAnalyticsCSV,
 };

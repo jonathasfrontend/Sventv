@@ -1,6 +1,12 @@
 {
   "version": 2,
   "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/internal/retention/run",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "builds": [
     {
       "src": "src/app.js",

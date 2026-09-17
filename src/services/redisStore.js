@@ -25,6 +25,7 @@
 const { Redis } = require('@upstash/redis');
 const config = require('../config/app');
 const logger = require('../utils/logger');
+const alertService = require('./alertService');
 
 // Chaves sensíveis lidas diretamente do ambiente — protegidas, nunca
 // expostas via config/snapshot/log.
@@ -100,6 +101,9 @@ async function isRedisAvailable() {
   } catch (err) {
     _availableCache = { value: false, expiresAt: now + config.redis.availabilityCacheMs };
     logger.warn(`Redis indisponível (ping) — fallback em memória: ${err && err.message}`);
+    // Alerta operacional (fire-and-forget; debounce por evento). NÃO dispara
+    // quando o kill switch/ausência de config causou o false — só falha real.
+    alertService.notify('redis.memory_fallback', { context: 'isRedisAvailable' });
     return false;
   }
 }

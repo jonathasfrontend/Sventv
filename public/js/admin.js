@@ -32,6 +32,16 @@ const channelCategoryFilter = document.getElementById('channelCategoryFilter');
 const channelStateFilter   = document.getElementById('channelStateFilter');
 const checkAllChannelsBtn  = document.getElementById('checkAllChannelsBtn');
 const reloadChannelsBtn    = document.getElementById('reloadChannelsBtn');
+const chSelectAll          = document.getElementById('chSelectAll');
+const channelBulkBar       = document.getElementById('channelBulkBar');
+const channelBulkCount     = document.getElementById('channelBulkCount');
+const channelBulkState     = document.getElementById('channelBulkState');
+const channelBulkReason    = document.getElementById('channelBulkReason');
+const channelBulkApply     = document.getElementById('channelBulkApply');
+const channelBulkClear     = document.getElementById('channelBulkClear');
+const userBulkBar          = document.getElementById('userBulkBar');
+const userBulkCount        = document.getElementById('userBulkCount');
+const userBulkReason       = document.getElementById('userBulkReason');
 const kpiChannels          = document.getElementById('kpiChannels');
 const kpiOnline            = document.getElementById('kpiOnline');
 const kpiOffline           = document.getElementById('kpiOffline');
@@ -45,6 +55,8 @@ let channelsCache = [];
 let channelCategories = [];
 let userSearchTimer = null;
 let channelSearchTimer = null;
+const selectedChannelIds = new Set();
+const selectedUserIds = new Set();
 
 // ── API helpers ──────────────────────────────────────────────
 // A autenticação das rotas admin acontece pelo cookie httpOnly de
@@ -106,6 +118,175 @@ function escapeHtml(str) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  SELEÇÃO EM LOTE (canais + usuários) + EXPORTAÇÃO CSV
+// ════════════════════════════════════════════════════════════
+
+function syncSelectAll(totalFiltered) {
+  if (!chSelectAll) return;
+  const selectedVisible = filteredChannels().filter(ch => selectedChannelIds.has(ch.id)).length;
+  chSelectAll.checked = totalFiltered > 0 && selectedVisible === totalFiltered;
+  chSelectAll.indeterminate = selectedVisible > 0 && selectedVisible < totalFiltered;
+}
+
+function syncBulkBars() {
+  if (channelBulkBar && channelBulkCount) {
+    const n = selectedChannelIds.size;
+    channelBulkBar.hidden = n === 0;
+    channelBulkCount.textContent = `${n} selecionado${n === 1 ? '' : 's'}`;
+  }
+  if (userBulkBar && userBulkCount) {
+    const n = selectedUserIds.size;
+    userBulkBar.hidden = n === 0;
+    userBulkCount.textContent = `${n} selecionado${n === 1 ? '' : 's'}`;
+  }
+}
+
+function chunkItems(list, size = 50) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+  return chunks;
+}
+
+function setBulkBusy(btn, busyText) {
+  if (!btn) return;
+  if (!btn.dataset.restoreText) btn.dataset.restoreText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+}
+
+function clearBulkBusy(btn) {
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = btn.dataset.restoreText || btn.textContent;
+}
+
+function bulkErrorSummary(errs) {
+  const head = [...errs].slice(0, 3);
+  return head.length ? ` ${head.join(' · ')}` : '';
+}
+
+function toggleUserSelection(userId, checked) {
+  if (checked) selectedUserIds.add(userId);
+  else selectedUserIds.delete(userId);
+  syncBulkBars();
+}
+
+function toggleChannelSelection(channelId, checked) {
+  if (checked) selectedChannelIds.add(channelId);
+  else selectedChannelIds.delete(channelId);
+  syncBulkBars();
+}
+
+async function applyChannelBulkState() {
+  const ids = [...selectedChannelIds];
+  if (!ids.length) return;
+  const state = channelBulkState?.value || 'live';
+  const reason = (channelBulkReason?.value || '').trim() || undefined;
+  try {
+    setBulkBusy(channelBulkApply, 'Aplicando...');
+    let applied = 0;
+    let failed = 0;
+    const errs = new Set();
+    for (const batch of chunkItems(ids)) {
+      const res = await apiSend('/api/admin/channels/bulk-state', 'PUT', {
+        items: batch.map(channelId => ({ channelId, state, reason })),
+      });
+      applied += res.data?.applied || 0;
+      failed += res.data?.failed || 0;
+      (res.data?.results || []).forEach(r => { if (!r.success && r.error) errs.add(r.error); });
+    }
+    selectedChannelIds.clear();
+    if (channelBulkReason) channelBulkReason.value = '';
+    syncSelectAll(0);
+    syncBulkBars();
+    await loadChannels();
+    showAlert(`${applied} canal(is) atualizado(s)${failed ? `, ${failed} falharam` : ''}.${bulkErrorSummary(errs)}`, failed ? 'error' : 'success');
+  } catch (err) {
+    showAlert('Falha ao aplicar em lote: ' + err.message);
+  } finally {
+    clearBulkBusy(channelBulkApply);
+  }
+}
+
+async function runUserBulk(action) {
+  const ids = [...selectedUserIds];
+  if (!ids.length) return;
+  if (action === 'delete' && !window.confirm(`Excluir permanentemente ${ids.length} conta(s)? Esta ação não pode ser desfeita.`)) return;
+  const reason = action === 'block' ? (userBulkReason?.value || '').trim() || undefined : undefined;
+  const items = ids.map(userId => ({
+    userId,
+    action,
+    ...(reason ? { reason } : {}),
+    ...(action === 'delete' ? { confirm: true } : {}),
+  }));
+  const btn = {
+    block: document.getElementById('userBulkBlock'),
+    unblock: document.getElementById('userBulkUnblock'),
+    promote: document.getElementById('userBulkPromote'),
+    demote: document.getElementById('userBulkDemote'),
+    delete: document.getElementById('userBulkDelete'),
+  }[action];
+  try {
+    setBulkBusy(btn, 'Processando...');
+    let applied = 0;
+    let failed = 0;
+    const errs = new Set();
+    for (const batch of chunkItems(items)) {
+      const res = await apiSend('/api/admin/users/bulk', 'PUT', { items: batch });
+      applied += res.data?.applied || 0;
+      failed += res.data?.failed || 0;
+      (res.data?.results || []).forEach(r => { if (!r.success && r.error) errs.add(r.error); });
+    }
+    selectedUserIds.clear();
+    if (userBulkReason) userBulkReason.value = '';
+    syncBulkBars();
+    await loadUsers();
+    const labels = { block: 'bloqueada(s)', unblock: 'desbloqueada(s)', promote: 'promovida(s)', demote: 'rebaixada(s)', delete: 'excluída(s)' };
+    showAlert(`${applied} conta(s) ${labels[action]}${failed ? `, ${failed} falharam` : ''}.${bulkErrorSummary(errs)}`, failed ? 'error' : 'success');
+  } catch (err) {
+    showAlert('Falha na operação em lote: ' + err.message);
+  } finally {
+    clearBulkBusy(btn);
+  }
+}
+
+// CSV exports: GET com cookie de sessão → o browser baixa o attachment.
+function triggerDownload(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function exportAnalyticsCsv() {
+  const period = analyticsPeriod?.value || 'today';
+  triggerDownload(`/api/admin/export/analytics.csv?period=${encodeURIComponent(period)}`);
+}
+
+function exportAuditCsv() {
+  const fromEl = document.getElementById('auditExportFrom');
+  const toEl = document.getElementById('auditExportTo');
+  if (!fromEl || !toEl || !fromEl.value || !toEl.value) {
+    showAlert('Informe as datas De/Até para exportar a auditoria.');
+    return;
+  }
+  const from = new Date(`${fromEl.value}T00:00:00`);
+  const to = new Date(`${toEl.value}T23:59:59.999`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from.getTime() > to.getTime()) {
+    showAlert('Intervalo de datas inválido (De deve ser anterior a Até).');
+    return;
+  }
+  if (to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) {
+    showAlert('O intervalo máximo para exportação é de 366 dias.');
+    return;
+  }
+  const qs = `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+  triggerDownload(`/api/admin/export/audit-logs.csv?${qs}`);
+}
+
+// ════════════════════════════════════════════════════════════
 //  CHANNELS
 // ════════════════════════════════════════════════════════════
 
@@ -137,7 +318,9 @@ function renderChannels() {
   const items = filteredChannels();
 
   if (!items.length) {
-    channelsTableBody.innerHTML = '<tr><td colspan="8">Nenhum canal encontrado.</td></tr>';
+    channelsTableBody.innerHTML = '<tr><td colspan="9">Nenhum canal encontrado.</td></tr>';
+    syncBulkBars();
+    syncSelectAll(0);
     return;
   }
 
@@ -152,6 +335,7 @@ function renderChannels() {
 
     return `
       <tr>
+        <td class="ch-col-select"><input type="checkbox" class="ch-row-check" data-select-channel="${ch.id}" ${selectedChannelIds.has(ch.id) ? 'checked' : ''} aria-label="Selecionar ${escapeHtml(ch.name)}"></td>
         <td>${logoHtml}</td>
         <td>
           <div class="ch-cell">
@@ -188,6 +372,18 @@ function renderChannels() {
       </tr>
     `;
   }).join('');
+
+  channelsTableBody.querySelectorAll('[data-select-channel]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedChannelIds.add(cb.dataset.selectChannel);
+      else selectedChannelIds.delete(cb.dataset.selectChannel);
+      syncBulkBars();
+      syncSelectAll(items.length);
+    });
+  });
+
+  syncBulkBars();
+  syncSelectAll(items.length);
 
   channelsTableBody.querySelectorAll('[data-check-channel]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -381,6 +577,7 @@ function renderUsers() {
     return `
       <article class="user-card ${self ? 'is-self' : ''}">
         <div class="user-card-head">
+          ${self ? '' : `<input type="checkbox" class="user-row-check" data-select-user="${escapeHtml(user.id)}" ${selectedUserIds.has(user.id) ? 'checked' : ''} aria-label="Selecionar ${escapeHtml(user.name)}">`}
           ${userAvatarHtml(user)}
           <div>
             <span class="user-card-name">${escapeHtml(user.name)}</span>
@@ -407,6 +604,9 @@ function renderUsers() {
 }
 
 function bindUserCardEvents() {
+  usersGrid.querySelectorAll('[data-select-user]').forEach(cb => {
+    cb.addEventListener('change', () => toggleUserSelection(cb.dataset.selectUser, cb.checked));
+  });
   usersGrid.querySelectorAll('[data-manage-user]').forEach(btn => {
     btn.addEventListener('click', () => openUserModal(btn.dataset.manageUser).catch(err => showAlert(err.message)));
   });
@@ -957,6 +1157,43 @@ loadAnalyticsBtn?.addEventListener('click', () => loadAnalytics().catch(err => s
 analyticsPeriod?.addEventListener('change', () => loadAnalytics().catch(err => showAlert(err.message)));
 loadAuditBtn?.addEventListener('click', () => loadAudit().catch(err => showAlert(err.message)));
 auditActionFilter?.addEventListener('change', () => loadAudit().catch(err => showAlert(err.message)));
+document.getElementById('exportAnalyticsBtn')?.addEventListener('click', exportAnalyticsCsv);
+document.getElementById('exportAuditBtn')?.addEventListener('click', exportAuditCsv);
+
+chSelectAll?.addEventListener('change', e => {
+  const checked = e.target.checked;
+  if (checked) filteredChannels().forEach(ch => selectedChannelIds.add(ch.id));
+  else selectedChannelIds.clear();
+  syncBulkBars();
+  renderChannels();
+});
+channelBulkApply?.addEventListener('click', () => applyChannelBulkState().catch(err => showAlert(err.message)));
+channelBulkClear?.addEventListener('click', () => {
+  selectedChannelIds.clear();
+  syncBulkBars();
+  renderChannels();
+});
+document.getElementById('userBulkBlock')?.addEventListener('click', () => runUserBulk('block').catch(err => showAlert(err.message)));
+document.getElementById('userBulkUnblock')?.addEventListener('click', () => runUserBulk('unblock').catch(err => showAlert(err.message)));
+document.getElementById('userBulkPromote')?.addEventListener('click', () => runUserBulk('promote').catch(err => showAlert(err.message)));
+document.getElementById('userBulkDemote')?.addEventListener('click', () => runUserBulk('demote').catch(err => showAlert(err.message)));
+document.getElementById('userBulkDelete')?.addEventListener('click', () => runUserBulk('delete').catch(err => showAlert(err.message)));
+document.getElementById('userBulkClear')?.addEventListener('click', () => {
+  selectedUserIds.clear();
+  syncBulkBars();
+  renderUsers();
+});
+
+(function initAuditExportDates() {
+  const fromEl = document.getElementById('auditExportFrom');
+  const toEl = document.getElementById('auditExportTo');
+  if (!fromEl || !toEl) return;
+  const pad = n => String(n).padStart(2, '0');
+  const to = new Date();
+  const from = new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000);
+  fromEl.value = `${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}`;
+  toEl.value = `${to.getFullYear()}-${pad(to.getMonth() + 1)}-${pad(to.getDate())}`;
+})();
 
 userSearch?.addEventListener('input', () => {
   clearTimeout(userSearchTimer);

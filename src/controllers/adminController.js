@@ -6,7 +6,9 @@ const EPGService = require('../services/epgService');
 const ChannelHealthService = require('../services/channelHealthService');
 const ChannelStateService = require('../services/channelStateService');
 const channelStateRepository = require('../repositories/channelStateRepository');
+const channelHealthRepository = require('../repositories/channelHealthRepository');
 const playbackService = require('../services/playbackService');
+const retentionService = require('../services/retentionService');
 const { audit } = require('../services/auditService');
 const { snapshot: metricsSnapshot, inc } = require('../utils/metrics');
 const logger = require('../utils/logger');
@@ -18,14 +20,13 @@ const { uploadAvatar } = require('../services/avatarService');
 const { serializeAdminUser, serializeAdminUserList } = require('../utils/adminUserSerializer');
 const { normalizeEmail } = require('../repositories/userRepository');
 const { passwordPolicyErrors } = require('../utils/passwordPolicy');
+const { streamCsv } = require('../utils/csv');
 
 const m3uService = M3UService.getShared();
-const healthService = new ChannelHealthService(m3uService, {
-  intervalMs: config.health.checkIntervalMs,
-  requestTimeout: config.health.requestTimeoutMs,
-  failoverThreshold: config.health.failoverThreshold,
-  failbackMinMs: config.health.failbackMinMs,
-});
+// Serviço de verificação de saúde dos canais — singleton compartilhado com o
+// proxy (channelController). Na Vercel, cada lambda fria hidrata o failover
+// persistido (channel_health) no cold start via app.js.
+const healthService = ChannelHealthService.getShared();
 const channelStateService = ChannelStateService.getShared();
 const epgService = EPGService.getShared();
 
@@ -106,6 +107,134 @@ const assertNotLastActiveAdmin = async ({ target, action, res }) => {
 
 const userNotFound = (res) =>
   res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+
+/**
+ * Aplica o estado administrativo de um canal (memória + canal + write-through
+ * persistência + auditoria). Caminho ÚNICO usado por setChannelState e
+ * bulkChannelState — o lote nunca pode divergir do single.
+ */
+const applyChannelState = async (channel, state, reason, req) => {
+  const actor = req.user ? (req.user.email || req.user.id) : null;
+
+  const result = channelStateService.set(channel.id, state, {
+    reason,
+    actor,
+  });
+
+  // Mantém o objeto em memória coerente com o estado (publicChannel e
+  // player leem `channel.state`).
+  channel.state = state;
+
+  // Persistência (write-through): o estado precisa sobreviver a restart/
+  // cold start e propagar entre instâncias. FAIL-OPEN — o estado em memória
+  // já foi aplicado; falha de banco é logada e contada.
+  if (config.channelState.persistEnabled) {
+    try {
+      if (state === 'live') {
+        await channelStateRepository.resetState(channel.id);
+      } else {
+        await channelStateRepository.upsertState(channel.id, {
+          state,
+          reason: result.reason,
+          setBy: actor,
+        });
+      }
+    } catch (error) {
+      inc('channelStatePersistenceFailures');
+      logger.warn('Falha ao persistir estado de canal:' + ' ' + error.message, {
+        channelId: channel.id,
+        state,
+      });
+    }
+  }
+
+  inc('channelStateChanges');
+  audit({
+    action: 'admin.channel.state',
+    req,
+    userId: req.user?.id,
+    channelId: channel.id,
+    meta: { prevState: result.prevState, state, reason: result.reason || null },
+  });
+
+  return result;
+};
+
+/**
+ * Guarda do último admin ativo LANÇANDO (para uso em lote): igual à versão
+ * de resposta única, mas o erro carrega statusCode 422 para ser capturado
+ * por item no bulk. Messagens idênticas à rota single (paridade de UX).
+ */
+const lastAdminActiveMessage = (action) => {
+  if (action === 'block') return 'Não é possível bloquear o último admin ativo.';
+  if (action === 'demote') return 'Não é possível remover o papel de administrador do último admin ativo.';
+  if (action === 'delete') return 'Não é possível excluir o último admin ativo.';
+  return 'Operação recusada sobre o último admin ativo.';
+};
+
+const assertNotLastActiveAdminBulk = async ({ target, action }) => {
+  if (!target || target.role !== 'admin' || target.status !== 'active') return;
+  if (!['block', 'demote', 'delete'].includes(action)) return;
+  const activeAdmins = await countActiveAdmins();
+  if (activeAdmins <= 1) {
+    const err = new Error(lastAdminActiveMessage(action));
+    err.statusCode = 422;
+    throw err;
+  }
+};
+
+/**
+ * Parseia parâmetro de data de exportação (ISO ou YYYY-MM-DD). null = inválido.
+ */
+const parseDateParam = (value) => {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Iterador de audit_logs para exportação: paginação por CURSOR composto
+ * (createdAt, id) — sem offset (evita scans crescentes) e sem buracos por
+ * empate de timestamp (o dissidente `id` desempata).
+ */
+const AUDIT_EXPORT_PAGE = 500;
+async function* iterAuditLogsCsv(from, to) {
+  let last = null;
+  for (;;) {
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        createdAt: { gte: from, lte: to },
+        ...(last
+          ? {
+              OR: [
+                { createdAt: { gt: last.createdAt } },
+                { createdAt: last.createdAt, id: { gt: last.id } },
+              ],
+            }
+          : null),
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: AUDIT_EXPORT_PAGE,
+    });
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      yield [
+        r.createdAt ? r.createdAt.toISOString() : '',
+        r.action || '',
+        r.email || '',
+        r.userId || '',
+        r.ip || '',
+        r.requestId || '',
+        r.channelId || '',
+        r.userAgent || '',
+        r.meta ? JSON.stringify(r.meta) : '',
+      ];
+    }
+    last = rows[rows.length - 1];
+  }
+}
 
 const adminController = {
   /**
@@ -623,6 +752,17 @@ const adminController = {
         }
       }
 
+      // Limpeza de failover persistido de canais removidos da M3U
+      // (channel_health) — best-effort, falha não bloqueia o reload.
+      if (config.health.persistEnabled) {
+        try {
+          const ids = m3uService.getAllChannels().map((c) => c.id);
+          await channelHealthRepository.removeStale(ids);
+        } catch (error) {
+          logger.warn('Falha ao limpar failover de canais removidos:' + ' ' + error.message);
+        }
+      }
+
       audit({
         action: 'admin.reload_channels',
         req,
@@ -706,50 +846,7 @@ const adminController = {
         return res.status(404).json({ success: false, message: 'Canal não encontrado.' });
       }
 
-      const actor = req.user ? (req.user.email || req.user.id) : null;
-
-      const result = channelStateService.set(channelId, state, {
-        reason,
-        actor,
-      });
-
-      // Mantém o objeto em memória coerente com o estado (publicChannel e
-      // player leem `channel.state`).
-      channel.state = state;
-
-      // Persistência (write-through): o estado precisa sobreviver a restart/
-      // cold start e propagar entre instâncias. FAIL-OPEN — o estado em
-      // memória já foi aplicado; falha de banco é logada e contada, a
-      // resposta continua sendo sucesso (estado continua valendo nesta
-      // instância até a fonte voltar).
-      if (config.channelState.persistEnabled) {
-        try {
-          if (state === 'live') {
-            await channelStateRepository.resetState(channelId);
-          } else {
-            await channelStateRepository.upsertState(channelId, {
-              state,
-              reason: result.reason,
-              setBy: actor,
-            });
-          }
-        } catch (error) {
-          inc('channelStatePersistenceFailures');
-          logger.warn('Falha ao persistir estado de canal:' + ' ' + error.message, {
-            channelId,
-            state,
-          });
-        }
-      }
-
-      inc('channelStateChanges');
-      audit({
-        action: 'admin.channel.state',
-        req,
-        userId: req.user?.id,
-        channelId,
-        meta: { prevState: result.prevState, state, reason: result.reason || null },
-      });
+      const result = await applyChannelState(channel, state, reason, req);
 
       return res.status(200).json({
         success: true,
@@ -865,6 +962,31 @@ const adminController = {
   },
 
   /**
+   * POST /admin/retention/run
+   * Executa manualmente a retenção de dados operacionais (request_usage +
+   * audit_logs expirados). Espelho do cron interno — útil para testes e
+   * picos de armazenamento. Auditoria registra o resultado.
+   */
+  async runRetention(req, res, next) {
+    try {
+      const result = await retentionService.runRetention();
+      audit({
+        action: 'admin.retention.run',
+        req,
+        userId: req.user?.id,
+        meta: result,
+      });
+      return res.status(200).json({
+        success: true,
+        message: 'Retenção executada com sucesso.',
+        data: result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
    * GET /admin/metrics/history?period=90d|custom
    * Série histórica de longa duração lida das tabelas diárias agregadas
    * (evita recontar cada sessão para 90+ dias).
@@ -881,6 +1003,278 @@ const adminController = {
       const series = await analyticsService.getHistoricalSeries(req.query);
       return res.status(200).json({ success: true, data: { series } });
     } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * PUT /admin/channels/bulk-state
+   * Aplica estado em lote (máx. 50 canais, validado por schema). Cada item é
+   * processado INDEPENDENTEMENTE — um canal inexistente ou falha pontual não
+   * derruba o lote nem cancela os seguintes. Reusa o MESMO caminho do
+   * `setChannelState` (applyChannelState: memória + persistência + auditoria).
+   * Auditoria por item (admin.channel.state) + resumo (admin.channel.bulk_state).
+   */
+  async bulkChannelState(req, res, next) {
+    try {
+      const items = Array.isArray(req.body.items) ? req.body.items : [];
+      const results = [];
+      let applied = 0;
+
+      for (const item of items) {
+        try {
+          const channel = m3uService.getChannelById(item.channelId);
+          if (!channel) {
+            results.push({
+              channelId: item.channelId,
+              state: item.state,
+              success: false,
+              error: 'Canal não encontrado.',
+            });
+            continue;
+          }
+          const result = await applyChannelState(channel, item.state, item.reason, req);
+          applied += 1;
+          results.push({
+            channelId: item.channelId,
+            state: result.state,
+            prevState: result.prevState,
+            reason: result.reason,
+            success: true,
+          });
+        } catch (error) {
+          results.push({
+            channelId: item.channelId,
+            state: item.state,
+            success: false,
+            error: (error && error.message) || 'Falha ao aplicar estado.',
+          });
+        }
+      }
+
+      audit({
+        action: 'admin.channel.bulk_state',
+        req,
+        userId: req.user?.id,
+        meta: { total: items.length, applied, failed: items.length - applied },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `${applied} de ${items.length} canais atualizados.`,
+        data: { results, applied, failed: items.length - applied },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * PUT /admin/users/bulk
+   * Ações em lote sobre usuários (block/unblock/promote/demote/delete, máx.
+   * 50). NUNCA contorna as proteções da rota single: cada item é submetido a
+   * anti-self-lockout e à guarda do último admin ativo; exclusão exige
+   * `confirm: true` por item. Processamento independente — um item falho não
+   * cancela os demais.
+   */
+  async bulkUserActions(req, res, next) {
+    try {
+      const items = Array.isArray(req.body.items) ? req.body.items : [];
+      const results = [];
+      let applied = 0;
+
+      for (const item of items) {
+        const base = { userId: item.userId, action: item.action };
+        try {
+          if (item.action === 'delete' && item.confirm !== true) {
+            results.push({ ...base, success: false, error: 'A exclusão precisa ser confirmada com confirm: true.' });
+            continue;
+          }
+
+          const target = await getTargetUser(item.userId);
+          if (!target) {
+            results.push({ ...base, success: false, error: 'Usuário não encontrado.' });
+            continue;
+          }
+
+          // PROTEÇÕES OBRIGATÓRIAS: self-lockout e último admin ativo.
+          assertAdminWriteGuards({ actor: req.user, target, action: item.action });
+          await assertNotLastActiveAdminBulk({ target, action: item.action });
+
+          if (item.action === 'block' || item.action === 'unblock') {
+            const blocked = item.action === 'block';
+            const user = await prisma.user.update({
+              where: { id: item.userId },
+              data: {
+                accountRestricted: blocked,
+                restrictedReason: blocked ? (item.reason || 'Conta bloqueada por administrador') : null,
+                status: blocked ? 'inactive' : 'active',
+                apiTokenActive: !blocked,
+                apiTokenVersion: { increment: 1 },
+              },
+              select: PUBLIC_USER_SELECT,
+            });
+            audit({
+              action: blocked ? 'admin.user_block' : 'admin.user_unblock',
+              req,
+              userId: item.userId,
+              email: target.email,
+              meta: { reason: blocked ? (item.reason || null) : null, by: req.user?.email },
+            });
+            applied += 1;
+            results.push({ ...base, success: true, status: user.status });
+            continue;
+          }
+
+          if (item.action === 'promote' || item.action === 'demote') {
+            const role = item.action === 'promote' ? 'admin' : 'user';
+            const roleRow = await prisma.role.findUnique({ where: { code: role } });
+            if (!roleRow) {
+              results.push({ ...base, success: false, error: 'Role não encontrada.' });
+              continue;
+            }
+            const user = await prisma.user.update({
+              where: { id: item.userId },
+              data: { role, roleId: roleRow.id },
+              select: PUBLIC_USER_SELECT,
+            });
+            audit({
+              action: 'admin.change_user_role',
+              req,
+              userId: item.userId,
+              email: target.email,
+              meta: { role, prevRole: target.role, by: req.user?.email },
+            });
+            applied += 1;
+            results.push({ ...base, success: true, role });
+            continue;
+          }
+
+          if (item.action === 'delete') {
+            await prisma.user.delete({ where: { id: item.userId }, select: { id: true, email: true } });
+            audit({
+              action: 'admin.user.deleted',
+              req,
+              userId: item.userId,
+              email: target.email,
+              meta: { deletedEmail: target.email, by: req.user?.email },
+            });
+            applied += 1;
+            results.push({ ...base, success: true });
+            continue;
+          }
+
+          results.push({ ...base, success: false, error: 'Ação inválida.' });
+        } catch (error) {
+          results.push({
+            ...base,
+            success: false,
+            error: (error && error.message) || 'Falha ao executar ação.',
+          });
+        }
+      }
+
+      audit({
+        action: 'admin.users.bulk',
+        req,
+        userId: req.user?.id,
+        meta: { total: items.length, applied, failed: items.length - applied },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `${applied} de ${items.length} ações executadas.`,
+        data: { results, applied, failed: items.length - applied },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * GET /admin/export/analytics.csv?period=today|7d|30d|90d|custom&from=&to=
+   * Exporta analytics em CSV (seção por canal + diária), streaming com cursor
+   * no banco e escrita por linha no response. Confere auditoria
+   * admin.analytics.export_csv.
+   */
+  async exportAnalyticsCSV(req, res, next) {
+    try {
+      const range = resolveRange(req.query);
+      if (!range) {
+        return res.status(422).json({
+          success: false,
+          message: 'Período inválido. Use today, 7d, 30d, 90d ou custom (from/to).',
+          errors: [{ field: 'period', message: 'Período inválido' }],
+        });
+      }
+
+      audit({
+        action: 'admin.analytics.export_csv',
+        req,
+        userId: req.user?.id,
+        meta: { from: range.start.toISOString(), to: range.end.toISOString() },
+      });
+
+      await analyticsService.streamAnalyticsCSV(res, range);
+      return undefined;
+    } catch (error) {
+      // Depois que o CSV começou não há mais JSON possível — encerra o stream.
+      if (res.headersSent) {
+        try { res.end(); } catch (e) { /* já encerrado */ }
+        return undefined;
+      }
+      return next(error);
+    }
+  },
+
+  /**
+   * GET /admin/export/audit-logs.csv?from=&to=
+   * Exporta a trilha de auditoria (from/to obrigatórios, máx. 366 dias),
+   * streaming com cursor composto (createdAt,id). CSV neutro contra injeção
+   * de fórmula (csvCell). Confere auditoria admin.audit_logs.export_csv.
+   */
+  async exportAuditLogsCSV(req, res, next) {
+    try {
+      const from = parseDateParam(req.query.from);
+      const to = parseDateParam(req.query.to);
+      if (!from || !to || from.getTime() > to.getTime()) {
+        return res.status(422).json({
+          success: false,
+          message: 'Informe parâmetros from/to válidos (from <= to).',
+          errors: [
+            { field: 'from', message: !from ? 'Data inválida.' : null },
+            { field: 'to', message: !to ? 'Data inválida.' : null },
+            { field: 'range', message: from && to && from.getTime() > to.getTime() ? 'from deve ser <= to.' : null },
+          ].filter((e) => e.message),
+        });
+      }
+      if (to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) {
+        return res.status(422).json({
+          success: false,
+          message: 'O intervalo máximo para exportação é de 366 dias.',
+          errors: [{ field: 'range', message: 'Intervalo máximo de 366 dias.' }],
+        });
+      }
+
+      audit({
+        action: 'admin.audit_logs.export_csv',
+        req,
+        userId: req.user?.id,
+        meta: { from: from.toISOString(), to: to.toISOString() },
+      });
+
+      await streamCsv(
+        res,
+        { filename: 'audit-logs.csv' },
+        ['created_at', 'action', 'email', 'user_id', 'ip', 'request_id', 'channel_id', 'user_agent', 'meta'],
+        iterAuditLogsCsv(from, to)
+      );
+      return undefined;
+    } catch (error) {
+      if (res.headersSent) {
+        try { res.end(); } catch (e) { /* já encerrado */ }
+        return undefined;
+      }
       return next(error);
     }
   },

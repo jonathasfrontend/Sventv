@@ -35,8 +35,6 @@
   margin-bottom: 26px;
 }
 
-.playlists-create .btn { margin-bottom: 1px; }
-
 .playlists-create + .form-alert { margin-top: -16px; margin-bottom: 16px; }
 
 /* ── Lista de playlists ───────────────────────────────────── */

@@ -777,13 +777,13 @@ function analyticsListRow(label, value, sub) {
 function renderAnalytics(data) {
   const o = data.overview || {};
   const kpis = [
-    ['▶️ Reproduções', o.sessions ?? '—'],
-    ['👤 Usuários únicos', o.uniqueUsers ?? '—'],
-    ['🎬 Canais únicos', o.uniqueChannels ?? '—'],
-    ['⏱️ Tempo total', data.period ? fmtDuration(o.totalWatchMs) : '—'],
-    ['📥 Eventos', o.playbackEvents ?? '—'],
-    ['🦸 Ativos agora', o.activeSessionsNow ?? '—'],
-    ['📁 Playlists', o.totalPlaylists ?? '—'],
+    ['Reproduções', o.sessions ?? '—'],
+    ['únicos', o.uniqueUsers ?? '—'],
+    ['Canais únicos', o.uniqueChannels ?? '—'],
+    ['Tempo total', data.period ? fmtDuration(o.totalWatchMs) : '—'],
+    ['Eventos', o.playbackEvents ?? '—'],
+    ['Ativos agora', o.activeSessionsNow ?? '—'],
+    ['Playlists', o.totalPlaylists ?? '—'],
   ];
   analyticsKpis.innerHTML = kpis.map(([label, value]) => `
     <div class="admin-kpi-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');

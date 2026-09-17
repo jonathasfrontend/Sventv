@@ -47,6 +47,8 @@
 }
 
 .admin-tab {
+  display: flex;
+  align-items: center;
   background: transparent;
   border: none;
   color: var(--fg-muted);
@@ -58,6 +60,10 @@
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease;
+}
+.admin-tab i{
+  font-size: 16px;
+  margin-right: 6px;
 }
 
 .admin-tab:hover {
@@ -170,16 +176,15 @@
 
 .metric-card {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
 }
 
-.metric-icon {
-  font-size: 22px;
+.metric-icon i {
+  font-size: 20px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -192,7 +197,7 @@
 
 .metric-card span {
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

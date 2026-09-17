@@ -108,6 +108,7 @@
   cursor: pointer;
   transition: all var(--transition);
   color: var(--fg-muted);
+  font-size: 18px;
 }
 
 .view-btn:hover {
@@ -386,7 +387,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition);

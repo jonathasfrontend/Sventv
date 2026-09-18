@@ -189,8 +189,17 @@ class ChannelController {
         });
       }
 
+      // "Avise-me": o botão do player só aparece com a feature ligada; o modo
+      // de auth escolhido reflete o TOKEN QUE AUTENTICOU O STREAM — API token
+      // (Bearer) ou sessão (cookie httpOnly da mesma origem). Nunca deriva de
+      // dados confiáveis do usuário/URL.
+      const ctx = {
+        canRemind: Boolean(config.reminders && config.reminders.enabled),
+        reminderAuth: req.authKind === 'api' ? 'api' : 'session',
+      };
+
       // Retorna HTML com player para iframe
-      const playerHtml = await this.generatePlayerHTML(channel, req.authToken || req.apiToken || req.query.token || '');
+      const playerHtml = await this.generatePlayerHTML(channel, req.authToken || req.apiToken || req.query.token || '', ctx);
 
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
@@ -476,11 +485,17 @@ class ChannelController {
    * @param {string} token - Token de autenticação
    * @returns {Promise<string>} - HTML do player
    */
-  async generatePlayerHTML(channel, token = '') {
+  async generatePlayerHTML(channel, token = '', ctx = {}) {
     // O player consome o stream via proxy HTTPS da própria API,
     // evitando Mixed Content quando a origem é apenas HTTP.
     const proxyUrl = `/api/channels/${encodeURIComponent(channel.id)}/proxy?token=${encodeURIComponent(token)}`;
     const state = this.channelStateService ? await this.channelStateService.get(channel.id) : 'live';
+
+    // "Avise-me": canRemind (kill switch da feature — false → botão não
+    // renderizado) e reminderAuth (como o player autentica o POST:
+    // 'api' = Bearer do token que autenticou o stream; 'session' = cookie).
+    const canRemind = Boolean(ctx && ctx.canRemind);
+    const reminderAuth = ctx && ctx.reminderAuth === 'api' ? 'api' : 'session';
 
     // EPG do player — fornecido AQUI (server-side), nunca buscado pelo
     // navegador durante a reprodução. Janela "agora − 1h → agora + 12h".
@@ -497,6 +512,8 @@ class ChannelController {
     // CHANNEL_EPG_JSON é um literal JSON de TEXTO externo (XMLTV) inserido
     // dentro do <script> — serialização segura (safeScriptJson) neutraliza
     // `</script>`/`<!--`/U+2028 antes de entrar no HTML.
+    // CHANNEL_CAN_REMIND vira literal booleano (nunca string) e
+    // CHANNEL_REMINDER_AUTH é 'api' | 'session' (whitelist).
     return this.playerTemplate
       .replace(/\{\{CHANNEL_ID\}\}/g, this.escapeHtml(channel.id))
       .replace(/\{\{CHANNEL_NAME\}\}/g, this.escapeHtml(channel.name))
@@ -505,7 +522,9 @@ class ChannelController {
       .replace(/\{\{CHANNEL_CATEGORY\}\}/g, this.escapeHtml(channel.category || ''))
       .replace(/\{\{CHANNEL_FORMAT\}\}/g, this.escapeHtml(channel.format || ''))
       .replace(/\{\{CHANNEL_STATE\}\}/g, this.escapeHtml(state))
-      .replace(/\{\{CHANNEL_EPG_JSON\}\}/g, safeScriptJson(epg));
+      .replace(/\{\{CHANNEL_EPG_JSON\}\}/g, safeScriptJson(epg))
+      .replace(/\{\{CHANNEL_CAN_REMIND\}\}/g, canRemind ? 'true' : 'false')
+      .replace(/\{\{CHANNEL_REMINDER_AUTH\}\}/g, reminderAuth === 'api' ? 'api' : 'session');
   }
 
   /**

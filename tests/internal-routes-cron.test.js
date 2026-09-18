@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * Rotas internas (Vercel Cron) — POST /api/internal/retention/run:
+ * Rotas internas (Vercel Cron) — POST /api/internal/retention/run e
+ * POST /api/internal/reminders/run:
  *  - segredo ausente/curto → rotas desligadas (404 genérico, fail-closed);
- *  - segredo errado          → 401 (e NENHUM efeito colateral — retenção não roda);
+ *  - segredo errado          → 401 (e NENHUM efeito colateral — job não roda);
  *  - segredo correto         → 200 com as contagens;
  *  - aceita X-Cron-Secret OU Authorization: Bearer (padrão do cron da Vercel);
  *  - o segredo nunca aparece na resposta/logs;
@@ -236,4 +237,96 @@ test('cron: requireCronSecret (unidade) — corretos/incorretos/fail-closed', as
   } finally {
     config.cron.secret = saved;
   }
+});
+
+// ── POST /api/internal/reminders/run (cron do "Avise-me") ─────
+
+const withPrismaReminders = (mocks, fn) => {
+  const saved = {
+    'programReminder.findMany': prisma.programReminder.findMany,
+  };
+  const set = (path, val) => {
+    const parts = path.split('.');
+    let obj = prisma;
+    for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
+    obj[parts[parts.length - 1]] = val;
+  };
+  for (const [path, mock] of Object.entries(mocks || {})) set(path, mock);
+  return Promise.resolve().then(fn).finally(() => {
+    for (const [path, orig] of Object.entries(saved)) set(path, orig);
+  });
+};
+
+test('cron: reminders — segredo ausente/curto → 404 fail-closed (rota desligada)', async () => {
+  await withCronConfig('', async () => {
+    await withServer(async (server) => {
+      const res = await request(server, {
+        path: '/api/internal/reminders/run',
+        headers: { 'X-Cron-Secret': 'qualquer-coisa' },
+      });
+      assert.equal(res.status, 404);
+      assert.ok(!res.body.includes('reminders'), 'não revela a rota');
+    });
+  });
+});
+
+test('cron: reminders — segredo correto + feature desligada → 200 sem tocar o banco', async () => {
+  const prev = config.reminders.enabled;
+  config.reminders.enabled = false;
+  try {
+    await withCronConfig(SECRET, async () => {
+      await withServer(async (server) => {
+        const res = await request(server, {
+          path: '/api/internal/reminders/run',
+          headers: { 'X-Cron-Secret': SECRET },
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('Lembretes processados.'), 'mensagem de sucesso');
+        assert.ok(res.body.includes('\"enabled\":false'), 'kill switch respeitado');
+        assert.ok(!res.body.includes(SECRET), 'segredo nunca aparece na resposta');
+      });
+    });
+  } finally {
+    config.reminders.enabled = prev;
+  }
+});
+
+test('cron: reminders — sem vencidos (findMany vazio) → 200 examined=0', async () => {
+  await withCronConfig(SECRET, async () => {
+    await withPrismaReminders(
+      { 'programReminder.findMany': async () => [] },
+      async () => {
+        await withServer(async (server) => {
+          const res = await request(server, {
+            path: '/api/internal/reminders/run',
+            headers: { Authorization: `Bearer ${SECRET}` },
+          });
+          assert.equal(res.status, 200);
+          assert.ok(res.body.includes('\"examined\":0'), 'janela varrida sem lembretes');
+          assert.ok(!res.body.includes(SECRET), 'segredo nunca aparece na resposta');
+        });
+      }
+    );
+  });
+});
+
+test('cron: reminders — falha de banco → 500 genérico, sem stack nem segredo', async () => {
+  await withCronConfig(SECRET, async () => {
+    await withPrismaReminders(
+      { 'programReminder.findMany': async () => { throw new Error('pg down: DATABASE_URL=hack'); } },
+      async () => {
+        await withServer(async (server) => {
+          const res = await request(server, {
+            path: '/api/internal/reminders/run',
+            headers: { 'X-Cron-Secret': SECRET },
+          });
+          assert.equal(res.status, 500);
+          assert.ok(res.body.includes('Falha ao processar lembretes.'), 'genérico');
+          assert.ok(!res.body.includes('pg down'), 'não vaza a mensagem técnica');
+          assert.ok(!res.body.includes(SECRET), 'segredo nunca aparece');
+          assert.ok(!res.body.includes('DATABASE_URL'), 'não vaza config');
+        });
+      }
+    );
+  });
 });

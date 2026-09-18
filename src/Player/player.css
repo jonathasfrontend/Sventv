@@ -391,6 +391,53 @@ body {
   transition: width var(--transition-normal);
 }
 
+.player__reminder-btn {
+  pointer-events: auto;   /* a barra é informativa; só o botão recebe clique */
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-white);
+  background: var(--color-red-600);
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: background var(--transition-normal);
+}
+
+.player__reminder-btn:hover {
+  background: #b90c0c;
+}
+
+.player__reminder-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* `hidden` vence o display inline-block default do button */
+.player__reminder-btn[hidden] {
+  display: none;
+}
+
+.player__reminder-msg {
+  flex: 0 1 auto;
+  margin-left: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--color-zinc-300);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player__reminder-msg[hidden] {
+  display: none;
+}
+
 /* ==================== RESPONSIVO ==================== */
 @media (max-width: 768px) {
   .player__epg-bar {

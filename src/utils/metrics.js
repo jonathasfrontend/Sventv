@@ -60,6 +60,17 @@ const counters = {
   // Trending (Top 10 — catálogo externo de metadados)
   trendingFetches: 0,
   trendingFetchFailures: 0,
+  // Avise-me (lembretes de programação do EPG)
+  remindersCreated: 0,
+  remindersDeleted: 0,
+  remindersNotified: 0,
+  remindersDuplicateRejected: 0,
+  // Cron de e-mail dos lembretes
+  reminderRuns: 0,
+  remindersEmailsSent: 0,
+  remindersEmailFailures: 0,
+  // Busca combinada (EPG + canais)
+  guideSearches: 0,
 };
 
 const latency = {

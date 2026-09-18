@@ -22,6 +22,10 @@ router.get('/', requireApiAuth, apiLimiter, epgController.listGuide);
 // (registrada ANTES de /:channelId para "grid" não ser capturada como id).
 router.get('/grid', requireApiAuth, apiLimiter, epgController.gridGuide);
 
+// GET /api/epg/search — busca combinada (canais + programação inteira).
+// Também antes de /:channelId ("search" não pode virar id de canal).
+router.get('/search', requireApiAuth, apiLimiter, epgController.search);
+
 // GET /api/epg/:channelId — grade completa de programação de um canal
 router.get('/:channelId', requireApiAuth, apiLimiter, epgController.getChannelGuide);
 

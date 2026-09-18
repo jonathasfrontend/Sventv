@@ -712,6 +712,188 @@
     }
   };
 
+  // ==================== MÓDULO: BOTÃO "AVISE-ME" ====================
+  // Ativa um lembrete para o PRÓXIMO programa da barra de EPG (nunca o atual).
+  // A lógica pura (payload/horizonte) vive em ReminderBarCore (testável);
+  // aqui só DOM + fetch. Nenhum dado de EPG é interpolado em HTML (100%
+  // element.textContent / criação de elemento) — conteúdo externo é texto.
+  // O POST usa credentials:'include' (session cookie do painel) e, quando o
+  // stream foi autenticado com API token, também Authorization: Bearer.
+  //
+  // Estado persistido: após ativar, o servidor marca o lembrete (banco + Redis)
+  // e o botão NÃO reaparece ao reabrir o player. A identidade é por PROGRAMA
+  // (canal + hora de início, NUNCA pelo título): outro programa com o mesmo
+  // nome e início diferente é um lembrete novo → o botão volta e um novo
+  // lembrete é armazenado (não reusa o estado salvo anterior).
+  const ReminderModule = (() => {
+    const channelId = (CHANNEL_DATA && CHANNEL_DATA.id) || '';
+    const canRemind = Boolean(typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.canRemind);
+    const reminderAuth = String((CHANNEL_DATA && CHANNEL_DATA.reminderAuth) || 'session').toLowerCase() === 'api'
+      ? 'api'
+      : 'session';
+
+    let slot = null;
+    let btn = null;
+    let msg = null;
+    let next = null;            // programa "próximo" corrente (salvo no update)
+    let lastView = null;        // última view renderizada (re-render pós-status)
+    let busy = false;
+    let subStart = null;        // início do lembrado nesta sessão (mensagem persistente)
+    const activeStarts = new Map();  // startMs → true (servidor confirmou existência)
+    const pendingStarts = new Set(); // startMs → consulta de status em andamento
+
+    function cacheElements() {
+      slot = document.getElementById('reminderSlot');
+      if (!slot) return;
+      // Botão/mensagem são estáticos (nenhum dado externo) — criados no JS
+      // para não poluir o template; texto via textContent.
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'player__reminder-btn';
+      btn.textContent = 'Avise-me';
+      btn.hidden = true;
+      btn.title = 'Receber um lembrete quando este programa começar';
+      msg = document.createElement('span');
+      msg.className = 'player__reminder-msg';
+      msg.hidden = true;
+      slot.appendChild(btn);
+      slot.appendChild(msg);
+    }
+
+    function setMessage(text) {
+      if (!msg) return;
+      msg.textContent = text;
+      msg.hidden = !text;
+    }
+
+    function authHeaders(json) {
+      const headers = {};
+      if (json) headers['Content-Type'] = 'application/json';
+      if (reminderAuth === 'api') {
+        try {
+          const token = new URL(CHANNEL_DATA.url, window.location.origin).searchParams.get('token') || '';
+          if (token) headers['Authorization'] = 'Bearer ' + token;
+        } catch (_) { /* sem token → só cookie */ }
+      }
+      return headers;
+    }
+
+    function statusUrl(startMs) {
+      return '/api/user/reminders/status?channelId=' + encodeURIComponent(channelId) +
+        '&startsAt=' + encodeURIComponent(String(startMs));
+    }
+
+    /**
+     * Estado persistido do botão: pergunta ao servidor (banco + Redis) se já
+     * existe lembrete para (canal, início deste próximo programa). UMA consulta
+     * por programa; falha ou 401 → fail-open (botão fica, o POST diria 409).
+     */
+    function resolveStatus(startMs) {
+      if (!canRemind || startMs == null) return;
+      if (activeStarts.has(startMs) || pendingStarts.has(startMs)) return;
+      pendingStarts.add(startMs);
+      fetch(statusUrl(startMs), { headers: authHeaders(false), credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (json && json.data && json.data.active) {
+            activeStarts.set(startMs, true);
+            if (lastView) update(lastView);
+          }
+        })
+        .catch(() => { /* fail-open: mantém o botão */ })
+        .finally(() => { pendingStarts.delete(startMs); });
+    }
+
+    function isActive(startMs) {
+      return startMs != null && (activeStarts.has(startMs) || subStart === startMs);
+    }
+
+    /**
+     * Chamado a cada render da barra de EPG: mostra/esconde o botão conforme
+     * exista um próximo programa sugerível, ainda não lembrado — checando o
+     * estado persistido (para o botão não ressurgir ao reabrir o player).
+     */
+    function update(view) {
+      if (!btn || !msg) return;
+      lastView = view;
+      next = (view && view.next && ReminderBarCore.shouldSuggestReminder(view.next, Date.now()))
+        ? view.next
+        : null;
+      const start = next ? ReminderBarCore.toEpochMs(next.start) : null;
+      if (next && start != null) resolveStatus(start);
+      const active = isActive(start);
+      const visible = canRemind && !active && Boolean(next) && start != null;
+      btn.hidden = !visible;
+      setMessage(!visible && active && start != null ? 'Lembrete ativado' : '');
+    }
+
+    function onRemind() {
+      if (!next || busy) return;
+      const payload = ReminderBarCore.buildPayload({ channelId, programme: next });
+      if (!payload) return;
+      const start = ReminderBarCore.toEpochMs(next.start);
+      if (isActive(start)) return;
+
+      busy = true;
+      btn.disabled = true;
+      setMessage('');
+
+      fetch('/api/user/reminders', {
+        method: 'POST',
+        headers: authHeaders(true),
+        credentials: 'include', // session cookie httpOnly (mesma origem)
+        body: JSON.stringify(payload),
+      })
+        .then((res) => {
+          if (res.status === 201 || res.status === 409) {
+            // 201 criado; 409 = já existe lembrete para canal+início → idem sucesso.
+            subStart = start;
+            activeStarts.set(start, true);
+            setMessage('Lembrete ativado');
+            update(lastView || null); // esconde o botão para ESTE programa
+            return;
+          }
+          if (res.status === 401) {
+            setMessage('Faça login para ativar lembretes.');
+            return;
+          }
+          setMessage('Não foi possível ativar. Tente novamente.');
+        })
+        .catch(() => {
+          setMessage('Não foi possível ativar. Tente novamente.');
+        })
+        .finally(() => {
+          busy = false;
+          btn.disabled = false;
+        });
+    }
+
+    function init() {
+      if (!canRemind) return; // kill switch da feature → nada é renderizado
+      cacheElements();
+      if (!btn) return;
+      btn.addEventListener('click', onRemind);
+    }
+
+    function destroy() {
+      if (btn) {
+        btn.removeEventListener('click', onRemind);
+        if (btn.parentNode) btn.parentNode.removeChild(btn);
+      }
+      if (slot) slot.innerHTML = '';
+      slot = null;
+      btn = null;
+      msg = null;
+      next = null;
+      lastView = null;
+      subStart = null;
+      activeStarts.clear();
+      pendingStarts.clear();
+    }
+
+    return { init, update, destroy };
+  })();
+
   // ==================== MÓDULO: BARRA DE EPG ====================
   // EPG embutido server-side em CHANNEL_DATA.epg (janela agora − 1h →
   // agora + 12h). NENHUM fetch durante a reprodução: atualização 100%
@@ -754,6 +936,7 @@
       if (!hasEpg) {
         // EPG desativado, sem cache, canal sem match ou dados inválidos →
         // barra permanentemente oculta. Sem mensagem de "sem programação".
+        ReminderModule.update(null); // sem programação → sem botão "Avise-me"
         return;
       }
 
@@ -800,6 +983,9 @@
         nextTitle.hidden = true;
         if (nextTime) nextTime.hidden = true;
       }
+
+      // Botão "Avise-me" reflete o próximo programa corrente (o atual nunca).
+      ReminderModule.update(view);
     }
 
     function formatTime(ms) {
@@ -815,6 +1001,7 @@
         clearInterval(timer);
         timer = null;
       }
+      ReminderModule.destroy(); // botão "Avise-me" morre junto com a barra
       list = [];
       hasEpg = false;
     }
@@ -1086,6 +1273,9 @@
 
     // 5. Barra de EPG (agora / próximo / progresso) — alimentada pelos
     //    dados embutidos; sem rede. Canal sem EPG → barra fica oculta.
+    //    O botão "Avise-me" (que vive na barra) precisa de init ANTES do
+    //    primeiro render do EPGModule para sincronizar a visibilidade.
+    ReminderModule.init();
     EPGModule.init();
 
     // 6. Inicializar atalhos de teclado

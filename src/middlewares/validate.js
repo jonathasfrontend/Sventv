@@ -344,6 +344,49 @@ const schemas = {
       'any.required': 'channelId é obrigatório.',
     }),
   }),
+
+  // Avise-me — lembrete de programação. Aceita o contrato canônico
+  // (title/startsAt) OU o contrato do player (programTitle/programStart,
+  // este último podendo ser ISO 8601 ou timestamp numérico). A normalização
+  // para o formato canônico acontece AQUI (o controller não conhece aliases).
+  // channelId/título/datas são strings validados; a existência do canal e a
+  // janela futura são validadas no reminderService, que conversa com a M3U.
+  createReminder: Joi.object({
+    channelId: Joi.string().trim().min(1).max(255).required().messages({
+      'any.required': 'channelId é obrigatório.',
+      'string.empty': 'channelId é obrigatório.',
+      'string.max': 'channelId deve ter no máximo 255 caracteres.',
+    }),
+    title: Joi.string().trim().min(1).max(255).optional().messages({
+      'string.max': 'O título deve ter no máximo 255 caracteres.',
+    }),
+    programTitle: Joi.string().trim().min(1).max(255).optional().messages({
+      'string.max': 'O título deve ter no máximo 255 caracteres.',
+    }),
+    startsAt: Joi.date().iso().optional().messages({
+      'date.iso': 'startsAt deve ser uma data em formato ISO 8601.',
+    }),
+    programStart: Joi.alternatives().try(
+      Joi.date().iso(),
+      Joi.number().integer().min(0)
+    ).optional().messages({
+      'alternatives.types': 'programStart deve ser ISO 8601 ou timestamp numérico.',
+      'number.integer': 'programStart deve ser ISO 8601 ou timestamp numérico.',
+    }),
+    stopAt: Joi.date().iso().allow(null).optional().messages({
+      'date.iso': 'stopAt deve ser uma data em formato ISO 8601.',
+    }),
+  }).custom((value, helpers) => {
+    const title = value.title !== undefined ? value.title : value.programTitle;
+    const startsAt = value.startsAt !== undefined ? value.startsAt : value.programStart;
+    if (!title) {
+      return helpers.message('O título do programa é obrigatório.');
+    }
+    if (startsAt === undefined) {
+      return helpers.message('O horário de início é obrigatório.');
+    }
+    return { channelId: value.channelId, title, startsAt, stopAt: value.stopAt !== undefined ? value.stopAt : null };
+  }),
 };
 
 const validate = (schemaName) => {

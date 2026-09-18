@@ -24,7 +24,6 @@ const startServer = async () => {
     logger.info(`📡 Porta       : ${config.port}`);
     logger.info(`🌍 Ambiente    : ${config.env}`);
     logger.info(`🔗 URL Local   : http://localhost:${config.port}`);
-    logger.info(`📚 Docs        : http://localhost:${config.port}/api/info`);
     logger.info(`❤️  Health      : http://localhost:${config.port}/api/health`);
     logger.info('================================================');
   });

@@ -23,6 +23,7 @@ const { Router } = require('express');
 
 const config = require('../config/app');
 const { runRetention } = require('../services/retentionService');
+const reminderService = require('../services/reminderService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -67,6 +68,22 @@ router.post('/retention/run', requireCronSecret, async (req, res) => {
     // Genérico — nunca expõe stack/host/segredo ao chamador do cron.
     logger.error(`Cron retention FALHOU: ${error && error.message}`);
     res.status(500).json({ success: false, message: 'Falha ao executar retenção.' });
+  }
+});
+
+// Lembretes "Avise-me": envia e-mails transacionais para programas com
+// início na próxima janela (SMTP). Segredo ausente/short → 404 (fail-closed);
+// falha de SMTP/banco NUNCA expõe detalhe ao chamador. Chamado como MÉTODO do
+// serviço (runDueReminders usa `this`) — desestruturar quebraria o binding.
+router.post('/reminders/run', requireCronSecret, async (req, res) => {
+  try {
+    const result = await reminderService.runDueReminders();
+    logger.info('[reminderService] cron lembretes executado', result);
+    res.status(200).json({ success: true, message: 'Lembretes processados.', data: result });
+  } catch (error) {
+    // Genérico — nunca expõe stack/host/segredo ao chamador do cron.
+    logger.error(`Cron lembretes FALHOU: ${error && error.message}`);
+    res.status(500).json({ success: false, message: 'Falha ao processar lembretes.' });
   }
 });
 

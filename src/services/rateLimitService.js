@@ -1,9 +1,10 @@
 'use strict';
 
 const prisma = require('../prisma/client');
+const config = require('../config/app');
 
-// Limite padrão de requisições por minuto
-const DEFAULT_LIMIT = 100;
+// Limite padrão de requisições por minuto (override via RATE_LIMIT_MAX_API).
+const DEFAULT_LIMIT = config.rateLimit.api;
 
 const floorToMinute = (date = new Date()) => {
   const d = new Date(date);

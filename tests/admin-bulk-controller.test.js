@@ -369,7 +369,14 @@ test('exportAnalyticsCSV: streaming correto (título + por canal + diário) com 
       assert.equal(res.ended, true);
 
       const body = res.chunks.join('');
-      assert.match(body, /^relatorio_analytics,periodo_2026-09-17_2026-09-17\r\n/);
+
+      // O período "today" é derivado da data de execução (resolveRange usa o
+      // relógio real) — o cabeçalho deve refletir o dia UTC corrente, nunca
+      // um valor fixo (este teste anteriormente hardcodava a data de escrita).
+      const periodStart = new Date();
+      periodStart.setUTCHours(0, 0, 0, 0);
+      const today = periodStart.toISOString().slice(0, 10);
+      assert.match(body, new RegExp(`^relatorio_analytics,periodo_${today}_${today}\\r\\n`));
       assert.match(body, /canal_id,canal,categoria,sessoes,espectadores_unicos,tempo_total_ms,tempo_total,tempo_medio_ms\r\n/);
       assert.match(body, /cA,Canal A,Filmes,2,2,180000,3min,90000\r\n/);
       assert.match(body, /^data,sessoes,espectadores_unicos,tempo_total_ms,tempo_total\r\n/m);

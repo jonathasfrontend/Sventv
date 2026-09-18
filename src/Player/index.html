@@ -59,6 +59,7 @@
         <span class="player__epg-label">Próximo</span>
         <span class="player__epg-title" id="epgNextTitle"></span>
         <span class="player__epg-time" id="epgNextTime"></span>
+        <span id="reminderSlot"></span>
       </div>
     </div>
 
@@ -117,9 +118,12 @@
       category: '{{CHANNEL_CATEGORY}}',
       format: '{{CHANNEL_FORMAT}}',
       state: '{{CHANNEL_STATE}}',
-      epg: {{CHANNEL_EPG_JSON}}
+      epg: {{CHANNEL_EPG_JSON}},
+      canRemind: {{CHANNEL_CAN_REMIND}},
+      reminderAuth: '{{CHANNEL_REMINDER_AUTH}}'
     };
   </script>
+  <script src="/Player/reminderBar.js"></script>
   <script src="/Player/epgBar.js"></script>
   <script src="/Player/player.js"></script>
 </body>

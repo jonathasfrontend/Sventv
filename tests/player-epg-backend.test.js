@@ -49,9 +49,12 @@ const CHANNEL_DATA = {
   category: '{{CHANNEL_CATEGORY}}',
   format: '{{CHANNEL_FORMAT}}',
   state: '{{CHANNEL_STATE}}',
-  epg: {{CHANNEL_EPG_JSON}}
+  epg: {{CHANNEL_EPG_JSON}},
+  canRemind: {{CHANNEL_CAN_REMIND}},
+  reminderAuth: '{{CHANNEL_REMINDER_AUTH}}'
 };
 </script>
+<script src="/Player/reminderBar.js"></script>
 <script src="/Player/epgBar.js"></script>
 <script src="/Player/player.js"></script>
 </body></html>`;
@@ -166,4 +169,35 @@ test('generatePlayerHTML: nunca vaza EPG_URL (host/config do upstream)', async (
   assert.ok(!html.includes('https://'), 'sem URLs absolutas no HTML do player');
   assert.ok(!html.includes('epg.example'), 'sem host interno do EPG');
   assert.ok(html.includes('/api/channels/chl-a1/proxy?token=tok'), 'proxy permanece relativo');
+});
+
+// ── generatePlayerHTML: botão "Avise-me" (ctx canRemind/reminderAuth) ──
+
+test('generatePlayerHTML: default (sem ctx) → canRemind=false e reminderAuth=session', async () => {
+  const ctl = makeController(makeEpgService());
+  const html = await ctl.generatePlayerHTML(CHANNEL, 'tok');
+  assert.ok(html.includes("canRemind: false"), 'botão desligado por padrão (kill switch)');
+  assert.ok(html.includes("reminderAuth: 'session'"), 'cookie session é o fallback seguro');
+});
+
+test('generatePlayerHTML: ctx.canRemind=true → canRemind: true (botão renderiza no cliente)', async () => {
+  const ctl = makeController(makeEpgService());
+  const html = await ctl.generatePlayerHTML(CHANNEL, 'tok', { canRemind: true });
+  assert.ok(html.includes("canRemind: true"), 'feature ligada pelo admin');
+});
+
+test('generatePlayerHTML: reminderAuth é whitelist (api|session), nunca ecoa entrada livre', async () => {
+  const ctl = makeController(makeEpgService());
+  for (const weird of ['api', 'session', 'admin', "' api;alert(1) ", 'API', '']) {
+    const html = await ctl.generatePlayerHTML(CHANNEL, 'tok', { reminderAuth: weird });
+    const mode = html.includes("reminderAuth: 'api'") ? 'api' : 'session';
+    assert.ok(mode === 'api' || mode === 'session', 'apenas api|session');
+  }
+});
+
+test('generatePlayerHTML: ctx api → canRemind+reminderAuth=api (Bearer do token que abriu o stream)', async () => {
+  const ctl = makeController(makeEpgService());
+  const html = await ctl.generatePlayerHTML(CHANNEL, 'tok', { canRemind: true, reminderAuth: 'api' });
+  assert.ok(html.includes("canRemind: true"), 'canRemind presente');
+  assert.ok(html.includes("reminderAuth: 'api'"), 'API token como bearer');
 });

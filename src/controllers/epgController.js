@@ -2,6 +2,8 @@
 const EPGService = require('../services/epgService');
 const M3UService = require('../services/m3uService');
 const { toPublicChannel } = require('../utils/publicChannel');
+const { inc } = require('../utils/metrics');
+const { splitTimeToken } = require('../utils/searchNormalize');
 
 /**
  * Controller do Guia de Programação (EPG).
@@ -71,6 +73,99 @@ class EPGController {
       });
     }
   };
+
+  /**
+   * GET /api/epg/search?q=&tz=&limitChannels=&limitProgrammes=
+   * Busca combinada em TODA a programação (não só na janela do grid):
+   * devolve canais da M3U cujo nome/categoria casa o texto + programas do
+   * EPG que casam texto E/OU horário. Horários são resolvidos no fuso do
+   * cliente via `tz` (offset em minutos, default 0) — o cliente pode mandar
+   * "20h" e esperar programações das 20h do SEU relógio. Resultados são
+   * agrupados e sempre passam por toPublicChannel (nunca vazam URL/segredo).
+   */
+  search = async (req, res) => {
+    try {
+      if (!this.epgService.isEnabled()) {
+        return res.status(200).json({
+          success: true,
+          message: 'Guia de canais desativado (EPG_ENABLED=false)',
+          data: { q: '', channels: [], programmes: [] },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const q = String((req.query && req.query.q) || '').trim().slice(0, 100);
+      const { time, text } = splitTimeToken(q);
+      // Válida se há texto útil OU token de horário ("20h" sozinho é válido).
+      const hasContent = q.length > 0 && (time != null || text.length > 0);
+
+      if (!hasContent) {
+        return res.status(422).json({
+          success: false,
+          message: 'Informe um termo de busca (e.g. "futebol", "20h" ou "jornal 20h30").',
+          data: null,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const rawTz = Number(req.query && req.query.tz);
+      const tzOffsetMinutes = Number.isFinite(rawTz) ? Math.max(-840, Math.min(840, Math.round(rawTz))) : 0;
+      const limitChannels = clampLimit(req.query.limitChannels, 50, 100);
+      const limitProgrammes = clampLimit(req.query.limitProgrammes, 100, 200);
+
+      await this.epgService.ensureLoaded();
+
+      inc('guideSearches');
+      const { channels: found, programmes } = this.epgService.search(q, {
+        limitChannels,
+        limitProgrammes,
+        tzOffsetMinutes,
+      });
+
+      const channels = found.map((ch) => this._publicWithMatch(ch)).filter(Boolean);
+
+      const programmeRows = [];
+      for (const p of programmes) {
+        const channel = this.m3uService.getChannelById(p.channelId);
+        if (!channel) continue;
+        programmeRows.push({
+          ...toPublicProgramme(p),
+          channelId: p.channelId,
+          channelName: channel.cleanName || channel.name || '',
+          channelLogo: channel.logo || '',
+          channelCategory: channel.category || '',
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Busca do guia concluída com sucesso',
+        data: { q, channels, programmes: programmeRows, total: programmeRows.length },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Erro na busca do guia:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        data: null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  };
+
+  /**
+   * Canal público + estado de match EPG (mesmo shape do listGuide).
+   */
+  _publicWithMatch(channel) {
+    if (!channel) return null;
+    const publicChannel = toPublicChannel(channel);
+    return {
+      ...publicChannel,
+      epgChannelId: this.epgService.getEpgChannelId(channel.id) || null,
+      hasEpg: Boolean(this.epgService.getEpgChannelId(channel.id)),
+    };
+  }
 
   /**
    * GET /api/epg/:channelId
@@ -227,6 +322,12 @@ class EPGController {
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_GRID_SPAN_MS = 7 * 24 * HOUR_MS; // janela máxima: 7 dias
+
+function clampLimit(raw, def, max) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(1, Math.min(max, Math.round(n)));
+}
 
 /**
  * Programa em formato público (ISO strings; nunca contém URL/segredo).

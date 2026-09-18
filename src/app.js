@@ -92,6 +92,10 @@ app.set('views', path.join(__dirname, '..', 'views'));
 // (grade vazia) até a fonte ser configurada — kill switch é só EPG_ENABLED.
 app.locals.epgEnabled = Boolean(config.epg.enabled);
 
+// Feature flag do "Avise-me" para o SSR (modal do guia). O botão só aparece
+// no frontend quando os lembretes estão habilitados no servidor.
+app.locals.remindersEnabled = Boolean(config.reminders.enabled);
+
 app.use(cookieParser());
 app.use(
   session({

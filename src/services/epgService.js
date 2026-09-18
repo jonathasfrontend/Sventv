@@ -5,6 +5,7 @@ const config = require('../config/app');
 const M3UService = require('./m3uService');
 const epgAliases = require('../config/epgAliases');
 const logger = require('../utils/logger');
+const { normalizeForSearch, splitTimeToken, matchesTimeToken } = require('../utils/searchNormalize');
 
 const DEFAULT_MAX_XML_BYTES = 150 * 1024 * 1024;
 
@@ -435,6 +436,67 @@ class EPGService {
     }
 
     return { from: fromMs, to: toMs, now: nowMs, total: channels.length, channels };
+  }
+
+  // ── Busca combinada (canais + programação) ────────────────────
+  // Busca em TODA a programação do EPG em memória (não apenas a janela do
+  // grid). Semântica idêntica ao filtro client-side (public/js/guide-search.js):
+  // texto sem acentos/caixa + token de horário ("20h", "20h30", "20:30")
+  // resolvido no fuso fornecido por `tzOffsetMinutes` (o cliente envia o seu
+  // offset; tests usam 0 = UTC). Canais são os da M3U oficial (a busca nunca
+  // inventa canal); programas só existem quando há match EPG. Limites de
+  // volume defensivos (50 canais / 100 programas por padrão).
+  search(query, opts = {}) {
+    const limitChannels = Math.min(100, Math.max(1, Number(opts.limitChannels) || 50));
+    const limitProgrammes = Math.min(200, Math.max(1, Number(opts.limitProgrammes) || 100));
+    const tzOffsetMinutes = Number(opts.tzOffsetMinutes) || 0;
+    const { time, text } = splitTimeToken(query);
+
+    const m3uChannels = this.m3uService.getAllChannels ? this.m3uService.getAllChannels() : [];
+
+    const internalByEpg = new Map();
+    for (const e of this.matchEntries) internalByEpg.set(e.epgChannelId, e.channelId);
+
+    const channels = [];
+    const matchedChannelIds = new Set();
+    if (text) {
+      for (const ch of m3uChannels) {
+        const hay = normalizeForSearch([ch.cleanName, ch.name, ch.category].filter(Boolean).join(' '));
+        if (!hay.includes(text)) continue;
+        channels.push(ch);
+        matchedChannelIds.add(ch.id);
+        if (channels.length >= limitChannels) break;
+      }
+    }
+
+    const programmes = [];
+    for (const p of this.programmes) {
+      const channelId = internalByEpg.get(p.channel);
+      if (!channelId) continue; // canal sem match na M3U não participa
+      // Canal já casou pelo nome → TODA a programação dele entra (filtro de
+      // horário ainda vale); só programas de canais não casados são filtrados
+      // pelo texto. É o que faz a busca de canal trazer a grade completa.
+      const channelMatched = matchedChannelIds.has(channelId);
+      if (text && !channelMatched) {
+        const hay = normalizeForSearch([p.title, p.subtitle, p.description, ...(p.categories || [])].filter(Boolean).join(' '));
+        if (!hay.includes(text)) continue;
+      }
+      if (!matchesTimeToken(p.start, time, tzOffsetMinutes)) continue;
+      programmes.push({
+        channelId,
+        start: p.start,
+        stop: p.stop,
+        title: p.title,
+        subtitle: p.subtitle || '',
+        description: p.description || '',
+        categories: p.categories || [],
+      });
+      if (programmes.length >= limitProgrammes) break;
+    }
+
+    programmes.sort((a, b) => (a.start - b.start) || (a.stop - b.stop));
+
+    return { channels, programmes, matchedProgrammes: programmes.length };
   }
 
   // ── Relatório admin (sem segredos) ────────────────────────────

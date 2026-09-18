@@ -190,6 +190,35 @@ async function incrWindow(key, windowMs) {
   };
 }
 
+/**
+ * SET idempotente com TTL (ex.: marcadores de estado do "Avise-me"). A chave
+ * é sobrescrita em toda chamada — vale para estados que só precisam existir
+ * por um tempo (janela do programa + margem), não para contadores.
+ *
+ * Fail-open: sem client/configurado ou falha de rede → retorna false (o
+ * chamador decide o fallback). NUNCA lança para o consumidor.
+ *
+ * @param {string} key  chave já com namespace (ex.: sventv:rem:active:...)
+ * @param {string} value valor a armazenar
+ * @param {number} ttlMs vida útil (ms, mínimo 1s)
+ * @returns {Promise<boolean>} true quando gravado no Redis
+ */
+async function setWithTTL(key, value, ttlMs) {
+  const client = getRedisClient();
+  if (!client) return false;
+  const seconds = Math.max(1, Math.ceil((Number(ttlMs) || 60_000) / 1000));
+  try {
+    await client.set(key, String(value ?? ''), { ex: seconds });
+    return true;
+  } catch (err) {
+    logger.warn(`Redis setWithTTL falhou (key dentro do namespace de ${NS}): ${err && err.message}`);
+    // Alerta operacional fire-and-forget; NÃO dispara quando o false veio de
+    // kill switch/ausência de config (nesse caso getRedisClient() retorna null).
+    alertService.notify('redis.memory_fallback', { context: 'setWithTTL' });
+    return false;
+  }
+}
+
 async function get(key) {
   const client = getRedisClient();
   if (!client) return null;
@@ -217,6 +246,7 @@ module.exports = {
   incrWithTTL,
   incrWindow,
   decr,
+  setWithTTL,
   get,
   del,
   makeKey,

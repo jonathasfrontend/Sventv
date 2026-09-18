@@ -1,7 +1,9 @@
 /* public/js/guia.js — Guia de TV (EPG Grid)
    Grid profissional de programação: timeline de horas no topo, coluna de
    canais fixa à esquerda, células posicionadas pelo eixo do tempo, linha
-   do "agora" e detalhes por clique. Consome GET /api/epg/grid. */
+   do "agora" e detalhes por clique. Consome GET /api/epg/grid. Inclui a
+   busca combinada (canais + programação, com acento/horário via
+   guide-search.js) e os lembretes "Avise-me". */
 'use strict';
 
 // ── Data Island (SSR) ─────────────────────────────────────────
@@ -17,13 +19,21 @@ if (!apiToken) {
   window.location.href = '/login';
 }
 
+// Lógica pura de busca (UMD — carregado como <script> antes deste arquivo).
+const GuideSearch = window.GuideSearch || null;
+
 // ── Constantes do grid ────────────────────────────────────────
 const PX_PER_HOUR = 112;      // escala horizontal: px por hora (== CSS .epg-hour)
 const HOUR_MS = 60 * 60 * 1000;
 const WINDOW_PAST_H = 2;      // horas para trás
 const WINDOW_AHEAD_H = 25;    // horas adiante (janela total ≈ 27h)
 const REALTIME_POLL_MS = 60000;
+const REALTIME_REMINDERS_MS = 45000;
 const NOW_TICK_MS = 30000;
+// Janela de disparo do lembrete: pode notificar até 30s ANTES do início e
+// até 10min DEPOIS (recupera lembretes cujo horário caiu com a página fechada).
+const REMINDER_NOTIFY_LEAD_MS = 30 * 1000;
+const REMINDER_NOTIFY_TRAIL_MS = 10 * 60 * 1000;
 
 // ── Estado ────────────────────────────────────────────────────
 const state = {
@@ -33,8 +43,15 @@ const state = {
   categories: [],
   search: '',
   category: '',
+  searchMode: 'grid',        // 'grid' (filtra grade local) | 'all' (server EPG)
+  searchDebounceTimer: null,
   debounceTimer: null,
   initialized: false,
+  // Avise-me
+  remindersEnabled: Boolean(__SSR__.remindersEnabled),
+  reminders: [],             // lembretes carregados do /api/user/reminders
+  reminderIndex: new Map(),  // `${channelId}|${startsAt}` → { id, notifiedAt }
+  reminderNotified: false,
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
@@ -49,6 +66,13 @@ const clearBtn = document.getElementById('guiaClearBtn');
 const errorEl = document.getElementById('guiaError');
 const retryLoad = document.getElementById('guiaRetryLoad');
 
+// Busca combinada (modo "tudo")
+const searchModeBtn = document.getElementById('guiaSearchMode');
+const resultsPanel = document.getElementById('guiaResults');
+const resultsSummary = document.getElementById('guiaResultsSummary');
+const resultsBody = document.getElementById('guiaResultsBody');
+const resultsClose = document.getElementById('guiaResultsClose');
+
 // Modal de detalhes
 const detailModal = document.getElementById('guiaDetailModal');
 const dgLogo = document.getElementById('dgLogo');
@@ -60,6 +84,8 @@ const dgTime = document.getElementById('dgTime');
 const dgDuration = document.getElementById('dgDuration');
 const dgDesc = document.getElementById('dgDesc');
 const dgWatchBtn = document.getElementById('dgWatchBtn');
+const dgReminderBtn = document.getElementById('dgReminderBtn');
+const dgReminderNote = document.getElementById('dgReminderNote');
 const dgClose = document.getElementById('dgClose');
 
 // Modal player
@@ -311,13 +337,18 @@ function buildCategories() {
   });
 }
 
+// Canal casa o texto/horário da busca? (acento/caixa via GuideSearch —
+// espelha a semântica do servidor). Fallback simples caso o UMD não exista.
 function matchesQuery(ch) {
-  const q = state.search.toLowerCase();
+  const q = state.search;
+  if (!q) return true;
+  if (GuideSearch) return GuideSearch.matchesGuideRow(q, ch, Date.now());
+  const ql = q.toLowerCase();
   const hay = [
     ch.cleanName, ch.name, ch.category,
     ...(ch.programmes || []).map((p) => [p.title, p.subtitle, ...(p.categories || [])]).flat(),
   ].filter(Boolean).join(' ').toLowerCase();
-  return hay.includes(q);
+  return hay.includes(ql);
 }
 
 function applyFilters() {
@@ -330,6 +361,11 @@ function applyFilters() {
   updateNowLines();
 }
 
+// Oculta/restaura todas as linhas do grid (modo "buscar em todos").
+function showGridRows(show) {
+  state.rows.forEach((row) => { row.rowEl.hidden = !show; });
+}
+
 function showEmptyIfNeeded() {
   if (errorShown()) { emptyEl.hidden = true; return; }
   const any = state.rows.some((row) => !row.rowEl.hidden);
@@ -338,6 +374,229 @@ function showEmptyIfNeeded() {
     ? '📺 Nenhum canal com programação disponível no momento.'
     : '🔍 Nenhum canal com programação nesta busca.';
   emptyEl.hidden = false;
+}
+
+// ── Busca combinada: modo "buscar em todos" (server-side) ─────
+// Consulta GET /api/epg/search — cobre TODA a programação (não só a janela
+// do grid), com normalização de acento + token de horário no fuso do usuário
+// (tz em minutos). O resultado é agrupado em CANAIS e PROGRAMAS.
+function runSearch() {
+  if (state.searchMode === 'all') {
+    if (!state.search) {
+      showGridRows(true);
+      applyFilters();
+      resultsPanel.hidden = true;
+      return;
+    }
+    showGridRows(false);
+    performRemoteSearch(state.search);
+  } else {
+    applyFilters();
+    resultsPanel.hidden = true;
+  }
+}
+
+async function performRemoteSearch(q) {
+  resultsPanel.hidden = false;
+  resultsSummary.textContent = `Buscando "${q}"...`;
+  resultsBody.innerHTML = '<div class="guia-res-row muted">Buscando na programação inteira…</div>';
+
+  // tz = offset (minutos) que transforma UTC → hora local do navegador.
+  const tzOffset = -new Date().getTimezoneOffset();
+  try {
+    const json = await apiFetch(`/api/epg/search?q=${encodeURIComponent(q)}&tz=${tzOffset}`);
+    if (!json || !json.data) { resultsSummary.textContent = 'Falha na busca.'; resultsBody.innerHTML = ''; return; }
+    renderSearchResults(q, json.data.channels || [], json.data.programmes || []);
+  } catch (_) {
+    resultsSummary.textContent = 'Falha na busca.';
+    resultsBody.innerHTML = '<div class="guia-res-row muted">Não foi possível concluir a busca.</div>';
+  }
+}
+
+function renderSearchResults(q, channels, programmes) {
+  const total = channels.length + programmes.length;
+  resultsSummary.textContent = `${total} resultado${total === 1 ? '' : 's'} para "${q}"`;
+  const frag = document.createDocumentFragment();
+
+  if (channels.length) {
+    const head = document.createElement('div');
+    head.className = 'guia-res-group';
+    head.textContent = `CANAIS (${channels.length})`;
+    frag.appendChild(head);
+    channels.forEach((ch) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'guia-res-row guia-res-channel';
+      el.innerHTML = `<span class="guia-res-title">${escapeHtml(ch.cleanName || ch.name || 'Canal')}</span>
+        <span class="guia-res-sub">${escapeHtml(ch.category || 'Geral')}</span>`;
+      el.addEventListener('click', () => openChannel(ch));
+      frag.appendChild(el);
+    });
+  }
+
+  if (programmes.length) {
+    const head = document.createElement('div');
+    head.className = 'guia-res-group';
+    head.textContent = `PROGRAMAS (${programmes.length})`;
+    frag.appendChild(head);
+    programmes.forEach((p) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'guia-res-row';
+      el.innerHTML = `<span class="guia-res-title">${escapeHtml(p.title || 'Programação')}</span>
+        <span class="guia-res-sub">${escapeHtml(p.channelName || '')} · ${fmtTime(p.start)} – ${fmtTime(p.stop)}</span>`;
+      el.addEventListener('click', () => {
+        const ch = {
+          id: p.channelId,
+          cleanName: p.channelName || '',
+          name: p.channelName || '',
+          category: p.channelCategory || '',
+          logo: p.channelLogo || '',
+          state: 'live',
+        };
+        openDetail(p, ch);
+      });
+      frag.appendChild(el);
+    });
+  }
+
+  if (!total) {
+    const empty = document.createElement('div');
+    empty.className = 'guia-res-row muted';
+    empty.textContent = 'Nenhum canal ou programa encontrado.';
+    frag.appendChild(empty);
+  }
+
+  resultsBody.innerHTML = '';
+  resultsBody.appendChild(frag);
+}
+
+// ── Avise-me (lembretes de programação) ───────────────────────
+function reminderKey(channelId, startsAt) {
+  return `${channelId}|${startsAt}`;
+}
+
+function notificationState() {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  return Notification.permission;
+}
+
+async function loadReminders() {
+  if (!state.remindersEnabled) return;
+  try {
+    const json = await apiFetch('/api/user/reminders?limit=100&upcoming=1');
+    if (!json || !Array.isArray(json.data)) return;
+    state.reminders = json.data;
+    state.reminderIndex.clear();
+    json.data.forEach((r) => state.reminderIndex.set(reminderKey(r.channelId, r.startsAt), r));
+    updateDetailReminder();
+  } catch (_) { /* não bloqueia o guia (fail-open na UI) */ }
+}
+
+function updateDetailReminder() {
+  if (!dgReminderBtn) return;
+  dgReminderBtn.hidden = true;
+  if (!state.remindersEnabled || !_detail || !_detail.prog) return;
+  const start = new Date(_detail.prog.start).getTime();
+  if (!Number.isFinite(start) || start <= Date.now()) return; // só futuros
+  const perm = notificationState();
+  if (perm === 'unsupported' || perm === 'denied') return;
+  const existing = state.reminderIndex.get(reminderKey(_detail.ch.id, _detail.prog.start));
+  dgReminderBtn.textContent = existing
+    ? '✓ Lembrete criado'
+    : '🔔 Avise-me quando começar';
+  dgReminderBtn.title = existing
+    ? 'Clique para remover o lembrete'
+    : 'Notifico quando este programa começar';
+  dgReminderBtn.hidden = false;
+}
+
+async function toggleReminder() {
+  if (!state.remindersEnabled || !_detail || !_detail.prog) return;
+  dgReminderNote.hidden = true;
+  const key = reminderKey(_detail.ch.id, _detail.prog.start);
+  const existing = state.reminderIndex.get(key);
+
+  if (existing) {
+    const res = await fetch(`/api/user/reminders/${encodeURIComponent(existing.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    if (res.ok) {
+      state.reminderIndex.delete(key);
+      state.reminders = state.reminders.filter((r) => r.id !== existing.id);
+      dgReminderNote.textContent = 'Lembrete removido.';
+    } else {
+      dgReminderNote.textContent = 'Não foi possível remover o lembrete.';
+    }
+    dgReminderNote.hidden = false;
+    updateDetailReminder();
+    return;
+  }
+
+  // Primeiro uso: permissão vinda de um gesto do usuário (policy browsers).
+  if (notificationState() === 'default') {
+    try { await Notification.requestPermission(); } catch (_) { /* user cancelou */ }
+  }
+  if (notificationState() === 'denied') {
+    dgReminderNote.textContent = 'Notificações bloqueadas no navegador. Ative a permissão do site nas configurações.';
+    dgReminderNote.hidden = false;
+    return;
+  }
+
+  const payload = {
+    channelId: _detail.ch.id,
+    title: _detail.prog.title || 'Programação',
+    startsAt: new Date(_detail.prog.start).toISOString(),
+    ...(_detail.prog.stop ? { stopAt: new Date(_detail.prog.stop).toISOString() } : {}),
+  };
+  const res = await fetch('/api/user/reminders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (res.ok && json.data) {
+    state.reminders.push(json.data);
+    state.reminderIndex.set(reminderKey(json.data.channelId, json.data.startsAt), json.data);
+    dgReminderNote.textContent = 'Você será avisado quando o programa começar.';
+  } else {
+    dgReminderNote.textContent = json.message || 'Não foi possível criar o lembrete.';
+  }
+  dgReminderNote.hidden = false;
+  updateDetailReminder();
+}
+
+// Dispara as notificações pendentes (janela: 30s antes → 10min depois do
+// início) e confirma via two-phase para não re-notificar no próximo poll.
+async function pollReminders() {
+  await loadReminders();
+  if (notificationState() !== 'granted') return;
+  const now = Date.now();
+  for (const r of state.reminders) {
+    if (r.notifiedAt) continue;
+    const start = new Date(r.startsAt).getTime();
+    if (!Number.isFinite(start)) continue;
+    if (start < now - REMINDER_NOTIFY_TRAIL_MS || start > now + REMINDER_NOTIFY_LEAD_MS) continue;
+    try {
+      const n = new Notification(`Está na hora: ${r.title}`, {
+        body: 'Este programa está começando agora no SvenTV.',
+        tag: `sventv-reminder-${r.id}`,
+        icon: '/favicon.svg',
+      });
+      n.onclick = () => { window.focus(); window.location.href = '/guia'; };
+    } catch (_) { /* ambiente sem suporte a Notification */ continue; }
+    try {
+      const res = await fetch(`/api/user/reminders/${encodeURIComponent(r.id)}/notified`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (res.ok) {
+        r.notifiedAt = new Date().toISOString();
+        state.reminderIndex.set(reminderKey(r.channelId, r.startsAt), r);
+      }
+    } catch (_) { /* tenta no próximo poll */ }
+  }
 }
 
 // ── Scroll até o "agora" / uma hora ───────────────────────────
@@ -380,6 +639,9 @@ function openDetail(prog, ch) {
         ? 'Este canal está bloqueado.'
         : dgDesc.textContent;
   }
+
+  dgReminderNote.hidden = true;
+  updateDetailReminder();
 
   detailModal.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -491,22 +753,48 @@ clearBtn?.addEventListener('click', () => {
   state.search = '';
   state.category = '';
   catFilter.value = '';
+  runSearch();
+  showGridRows(true);
   applyFilters();
+  resultsPanel.hidden = true;
 });
 retryLoad?.addEventListener('click', () => { init(); });
 
 searchInput?.addEventListener('input', () => {
   clearTimeout(state.debounceTimer);
-  state.debounceTimer = setTimeout(() => {
-    state.search = searchInput.value.trim();
-    applyFilters();
-  }, 250);
+  clearTimeout(state.searchDebounceTimer);
+  state.debounceTimer = setTimeout(() => { state.search = searchInput.value.trim(); runSearch(); }, 250);
 });
 
 catFilter?.addEventListener('change', () => {
   state.category = catFilter.value;
   applyFilters();
 });
+
+// Busca combinada: alternar entre "grade local" e "toda a programação"
+searchModeBtn?.addEventListener('click', () => {
+  state.searchMode = state.searchMode === 'grid' ? 'all' : 'grid';
+  searchModeBtn.textContent = state.searchMode === 'grid' ? 'Buscar na grade' : 'Buscar em todos';
+  if (state.searchMode === 'grid') {
+    catFilter.parentElement && (catFilter.closest('.dashboard-controls') || catFilter.parentElement).style && (catFilter.hidden = false);
+    resultsPanel.hidden = true;
+    runSearch();
+  } else {
+    if (catFilter) catFilter.hidden = true;
+    runSearch();
+  }
+});
+
+resultsClose?.addEventListener('click', () => {
+  searchInput.value = '';
+  state.search = '';
+  resultsPanel.hidden = true;
+  showGridRows(true);
+  applyFilters();
+});
+
+// Avise-me: toggle o lembrete ao clicar no botão do modal
+dgReminderBtn?.addEventListener('click', () => toggleReminder());
 
 // Detail modal
 dgClose?.addEventListener('click', closeDetail);
@@ -547,6 +835,17 @@ async function init() {
     Realtime.poll({ name: 'guia', fn: loadGrid, interval: REALTIME_POLL_MS });
   } else {
     setInterval(() => { loadGrid().catch(() => {}); }, REALTIME_POLL_MS);
+  }
+
+  // Avise-me: carrega os lembretes e, quando a aba está aberta, vence as
+  // notificações pendentes (janela curta) — pausado em aba oculta.
+  if (state.remindersEnabled) {
+    loadReminders();
+    if (window.Realtime) {
+      Realtime.poll({ name: 'reminders', fn: pollReminders, interval: REALTIME_REMINDERS_MS });
+    } else {
+      setInterval(() => { pollReminders().catch(() => {}); }, REALTIME_REMINDERS_MS);
+    }
   }
 }
 

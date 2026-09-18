@@ -103,3 +103,114 @@ test('sem SMTP configurado e sem transporter injetado → erro SMTP_NOT_CONFIGUR
     emailService._setTransporter(prevTransporter);
   }
 });
+
+// ── Lembrete de programação ("Avise-me") ──────────────────────
+
+const REMINDER_OPTS = {
+  channelName: 'Globo HD',
+  programTitle: 'Jornal Nacional',
+  startsAt: Date.parse('2026-09-18T20:00:00.000Z'),
+  stopAt: Date.parse('2026-09-18T21:00:00.000Z'),
+  appUrl: '',
+  timeZone: 'UTC',
+};
+
+test('buildReminderEmail: subject/corpo/HTML têm canal, programa e instante', () => {
+  const { subject, text, html } = emailService.buildReminderEmail(REMINDER_OPTS);
+  assert.equal(subject, 'SvenTV — Jornal Nacional começa agora');
+  assert.ok(text.includes('Globo HD'));
+  assert.ok(text.includes('Jornal Nacional'));
+  assert.ok(text.includes('sexta-feira'), 'instante formatado (UTC, pt-BR), 2026-09-18 é sexta');
+  assert.ok(html.includes('Jornal Nacional'));
+  assert.ok(html.includes('Globo HD'));
+  assert.ok(!html.includes('https://'), 'sem URL quando appUrl ausente');
+});
+
+test('buildReminderEmail: appUrl gera CTA e link /guia', () => {
+  const { text, html } = emailService.buildReminderEmail({ ...REMINDER_OPTS, appUrl: 'https://sventv.app' });
+  assert.ok(text.includes('https://sventv.app/guia'));
+  assert.ok(html.includes('Assistir ao vivo'));
+});
+
+test('buildReminderEmail: conteúdo externo é saneado (CR/LF e HTML no subject/corpo)', () => {
+  const malicious = emailService.buildReminderEmail({
+    channelName: 'Globo\r\nBcc: v@mal.com',
+    programTitle: '<b>Jornal</b> & "aspas"\n\nVisor',
+    startsAt: Date.parse('2026-09-19T21:00:00.000Z'),
+    appUrl: 'https://sventv.app\nX-Injected: 1',
+    timeZone: 'UTC',
+  });
+  // Subject é HEADER → quebras são neutralizadas (o `Bcc:` vira texto, nunca
+  // uma linha nova de cabeçalho). NÃO aplicamos escape HTML no subject.
+  assert.ok(!malicious.subject.includes('\n'), 'CR/LF neutralizados no subject (header injection)');
+  assert.ok(!malicious.subject.includes('\r'), 'CR neutralizado no subject');
+  assert.ok(!malicious.subject.includes('\nBcc:'), 'header injection neutralizada no subject');
+  // O canal com CR/LF vira TEXTO no corpo (nunca cabeçalho).
+  assert.ok(malicious.text.includes('Bcc: v@mal.com'), 'channelName neutralizado vira texto no corpo');
+  assert.ok(!malicious.text.includes('\nBcc:'), 'nenhuma linha nova de cabeçalho no corpo texto');
+  // Corpo HTML é onde HTML injection importa → escapado.
+  assert.ok(malicious.html.includes('&lt;b&gt;'), 'HTML escapado');
+  assert.ok(malicious.html.includes('&amp;'), 'ampersand escapado');
+  assert.ok(malicious.html.includes('&quot;aspas&quot;'), 'aspas escapadas');
+  assert.ok(!malicious.html.includes('<b>Jornal</b>'), 'tag crua jamais interpolada no HTML');
+  assert.ok(!malicious.html.includes('\nX-Injected:'), 'appUrl com quebra não vira heading no HTML');
+});
+
+test('buildReminderEmail: timeZone controla o instante exibido (determinístico em teste)', () => {
+  const saoPaulo = emailService.buildReminderEmail({ ...REMINDER_OPTS, timeZone: 'America/Sao_Paulo' });
+  const utc = emailService.buildReminderEmail({ ...REMINDER_OPTS, timeZone: 'UTC' });
+  assert.ok(saoPaulo.text.includes('17:00'), '20:00Z = 17:00 em São Paulo');
+  assert.ok(utc.text.includes('20:00'), 'UTC mantém 20:00');
+  assert.ok(saoPaulo.text.includes('Horário de Brasília'), 'label do fuso explícito');
+  assert.ok(utc.text.includes('Horário universal (UTC)'), 'label do fuso explícito no UTC');
+});
+
+test('buildReminderEmail: instante inválido → campo vazio (sem lançar)', () => {
+  const out = emailService.buildReminderEmail({ ...REMINDER_OPTS, startsAt: Number.NaN });
+  assert.ok(!out.text.includes('undefined'), 'sem "undefined" no corpo');
+  assert.ok(out.subject.length > 0);
+});
+
+test('sendReminderEmail: transporte fake recebe payload completo e devolve messageId', async () => {
+  let sent = null;
+  emailService._setTransporter({
+    sendMail: async (opts) => { sent = opts; return { messageId: 'rem-msg-1' }; },
+  });
+  try {
+    const out = await emailService.sendReminderEmail({ ...REMINDER_OPTS, email: 'u@exemplo.com' });
+    assert.equal(out.messageId, 'rem-msg-1');
+    assert.equal(sent.to, 'u@exemplo.com');
+    assert.ok(sent.subject && sent.text && sent.html);
+  } finally {
+    emailService._setTransporter(null);
+  }
+});
+
+test('sendReminderEmail: falha de transporte → erro genérico SMTP_FAILED', async () => {
+  emailService._setTransporter({ sendMail: async () => { throw new Error('ECONNECTION'); } });
+  try {
+    await assert.rejects(
+      () => emailService.sendReminderEmail({ ...REMINDER_OPTS, email: 'u@exemplo.com' }),
+      (err) => err.message === 'SMTP_FAILED'
+    );
+  } finally {
+    emailService._setTransporter(null);
+  }
+});
+
+test('sendReminderEmail: sem SMTP configurado → SMTP_NOT_CONFIGURED (não marca naíthing no caller)', async () => {
+  const config = require('../src/config/app');
+  const prevEnabled = config.smtp.enabled;
+  const prevTransporter = emailService.getTransporter();
+  emailService._setTransporter(null);
+  config.smtp.enabled = false;
+  try {
+    await assert.rejects(
+      () => emailService.sendReminderEmail({ ...REMINDER_OPTS, email: 'u@exemplo.com' }),
+      (err) => err.message === 'SMTP_NOT_CONFIGURED' && !/host|credencial/i.test(err.message)
+    );
+  } finally {
+    config.smtp.enabled = prevEnabled;
+    emailService._setTransporter(prevTransporter);
+  }
+});

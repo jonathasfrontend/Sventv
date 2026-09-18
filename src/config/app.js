@@ -20,6 +20,8 @@ const config = {
   // instrução de texto) — nunca inventa domínio.
   app: {
     baseUrl: process.env.APP_BASE_URL || '',
+    // Fuso padrão para exibição de horários em e-mails transacionais.
+    timeZone: process.env.APP_TIMEZONE || 'America/Sao_Paulo',
   },
 
   // ---- Banco de Dados (Postgres via Prisma) ----
@@ -247,6 +249,36 @@ const config = {
     requestUsageDays: parseInt(process.env.REQUEST_USAGE_RETENTION_DAYS, 10) || 30,
     // audit_logs: trilha de auditoria (obrigação legal/compliance).
     auditLogDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS, 10) || 90,
+  },
+
+  // ---- Avise-me (lembretes de programação) ----
+  // O usuário pede para ser notificado quando um programa DO EPG começar. Dois
+  // canais de entrega independentes, sem duplicar (o flag `notifiedAt` fecha o
+  // ciclo de quem marcar primeiro):
+  //   1) frontend — browser Notification API (two-phase, ~30s de pré-aviso);
+  //   2) servidor — cron de e-mail (POST /api/internal/reminders/run, a cada
+  //      5 min na Vercel) envia SMTP para lembretes com startsAt dentro de
+  //      `dueWindowMs`. O serviço NUNCA envia push com a página fechada,
+  //      exceto o e-mail agendado (limitação documentada).
+  // Kill switch: REMINDERS_ENABLED=false → rotas respondem 400 FEATURE_DISABLED
+  // e o botão some no frontend.
+  reminders: {
+    // Kill switch: false → feature desligada sem novo deploy.
+    enabled: process.env.REMINDERS_ENABLED !== 'false',
+    // Limite de lembretes ativos por usuário.
+    maxPerUser: parseInt(process.env.REMINDERS_MAX_PER_USER, 10) || 50,
+    // Horizonte máximo à frente aceito (padrão 24h) — o e-mail é agendado
+    // pelo cron; horizontes longos criariam estado morto no banco.
+    maxHorizonMs: parseInt(process.env.REMINDERS_MAX_HORIZON_MS, 10) || 24 * 60 * 60 * 1000,
+    // Janela do cron de e-mail: lembretes com início em [agora, agora+janela].
+    dueWindowMs: parseInt(process.env.REMINDERS_DUE_WINDOW_MS, 10) || 300_000,
+    // Lote máximo por execução do cron (proteção contra picos de SMTP).
+    batchLimit: parseInt(process.env.REMINDERS_BATCH_LIMIT, 10) || 50,
+    // Vida do marcador de estado do botão "Avise-me" no Redis (Upstash,
+    // mesmo store de rate/stream limiter): o marker guarda
+    // (userId, channelId, startsAt) e some `stateKeepAfterMs` após o início —
+    // tempo suficiente para o "próximo programa" da EPG já ter trocado.
+    stateKeepAfterMs: parseInt(process.env.REMINDERS_STATE_KEEP_AFTER_MS, 10) || 4 * 60 * 60 * 1000,
   },
 
   // ---- Jobs internos (Vercel Cron / endpoints internos) ----

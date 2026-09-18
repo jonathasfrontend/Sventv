@@ -44,6 +44,7 @@ model User {
   playlistChannels PlaylistChannel[]
   userMetrics      UserMetric[]
   passwordResetCodes PasswordResetCode[]
+  programReminders ProgramReminder[]
 
   @@index([status], map: "users_status_idx")
   @@index([role], map: "users_role_idx")
@@ -309,6 +310,31 @@ model ChannelHealth {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("channel_health")
+}
+
+// ── Avise-me (lembretes de programação) ──────────────────────
+// Um lembrete por (usuário, canal, horário de início) — o usuário pede para
+// ser notificado quando um programa do EPG começar. A URL/programa vem do
+// EPG em memória; aqui fica apenas o snapshot mínimo (channelId + título) +
+// a janela de tempo. `notifiedAt` fecha o ciclo two-phase (cliente dispara a
+// Notification e confirma o disparo). Canais NÃO são entidades de banco —
+// channelId é String sem FK, mesma abordagem de channel_health.
+model ProgramReminder {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  channelId  String    @map("channel_id") @db.VarChar(255)
+  title      String    @db.VarChar(255)
+  startsAt   DateTime  @map("starts_at") @db.Timestamptz(6)
+  stopAt     DateTime? @map("stop_at") @db.Timestamptz(6)
+  notifiedAt DateTime? @map("notified_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId, startsAt], map: "program_reminders_user_channel_start_unique")
+  @@index([userId, startsAt], map: "program_reminders_user_start_idx")
+  @@index([startsAt, notifiedAt], map: "program_reminders_due_idx")
+  @@map("program_reminders")
 }
 
 model UserMetric {

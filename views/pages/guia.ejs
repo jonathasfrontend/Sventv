@@ -14,12 +14,21 @@
   <div class="dashboard-controls guia-controls">
     <div class="dashboard-search-wrap">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" id="guiaSearchInput" class="form-input search-input" placeholder="Buscar por canal ou programa..." autocomplete="off">
+      <input type="search" id="guiaSearchInput" class="form-input search-input" placeholder="Buscar por canal, programa ou horário (ex.: 20h)..." autocomplete="off">
+      <button type="button" class="btn btn-ghost btn-sm" id="guiaSearchMode" title="Alterna entre buscar na grade carregada e em toda a programação">Buscar na grade</button>
     </div>
     <select id="guiaCategoryFilter" class="form-input filter-select">
       <option value="">Todas as categorias</option>
     </select>
   </div>
+
+  <section class="guia-results" id="guiaResults" hidden>
+    <div class="guia-results-head">
+      <span id="guiaResultsSummary"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="guiaResultsClose">✕ Limpar</button>
+    </div>
+    <div class="guia-results-body" id="guiaResultsBody"></div>
+  </section>
 
   <div class="epg-scroll" id="epgScroll">
     <div class="epg-timeline" id="epgTimeline">
@@ -60,8 +69,10 @@
       <p class="dg-duration" id="dgDuration"></p>
       <p class="dg-desc" id="dgDesc"></p>
       <div class="dg-actions">
+        <button class="btn btn-ghost" id="dgReminderBtn" type="button" hidden>🔔 Avise-me quando começar</button>
         <button class="btn btn-primary" id="dgWatchBtn" type="button">▶ Assistir ao vivo</button>
       </div>
+      <p class="dg-note" id="dgReminderNote" hidden></p>
     </div>
   </div>
 </div>
@@ -98,10 +109,12 @@
 <script type="application/json" id="__USER_DATA__"><%- JSON.stringify({
   name:     locals.user ? locals.user.name : null,
   apiToken: locals.user ? locals.user.apiToken : null,
-  epgEnabled: locals.epgEnabled
+  epgEnabled: locals.epgEnabled,
+  remindersEnabled: locals.remindersEnabled !== false
 }) %></script>
 <%- include('../partials/footer') %>
 <script src="/js/realtime.js"></script>
+<script src="/js/guide-search.js"></script>
 <script src="/js/guia.js"></script>
 </body>
 </html>

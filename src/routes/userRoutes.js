@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const userController = require('../controllers/userController');
+const reminderController = require('../controllers/reminderController');
 const { requireSessionOrApi } = require('../middlewares/auth');
 const { userLimiter } = require('../middlewares/rateLimiter');
 const { validate } = require('../middlewares/validate');
@@ -57,5 +58,15 @@ router.delete(
   ...guard,
   userController.removeChannel
 );
+
+// ─── Avise-me (lembretes de programação) ─────────────────────
+// Lembretes são dados pessoais: ownership SEMPRE via req.user.id (já
+// garantido pela guarda). A confirmação de disparo (two-phase) é idempotente.
+
+router.get('/user/reminders', ...guard, reminderController.list);
+router.post('/user/reminders', ...guard, validate('createReminder'), reminderController.create);
+router.get('/user/reminders/status', ...guard, reminderController.status);
+router.post('/user/reminders/:id/notified', ...guard, reminderController.markNotified);
+router.delete('/user/reminders/:id', ...guard, reminderController.remove);
 
 module.exports = router;

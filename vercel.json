@@ -5,10 +5,6 @@
     {
       "path": "/api/internal/retention/run",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/internal/reminders/run",
-      "schedule": "*/5 * * * *"
     }
   ],
   "builds": [

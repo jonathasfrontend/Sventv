@@ -274,6 +274,11 @@ const config = {
     dueWindowMs: parseInt(process.env.REMINDERS_DUE_WINDOW_MS, 10) || 300_000,
     // Lote máximo por execução do cron (proteção contra picos de SMTP).
     batchLimit: parseInt(process.env.REMINDERS_BATCH_LIMIT, 10) || 50,
+    // Canal de e-mail (SMTP) do cron. A Vercel Hobby NÃO agenda o run
+    // (1 cron/dia dedicado à retenção) → em produção vale setar `false`:
+    // o Avise-me passa a usar SÓ a Notification do navegador. Dev/testa
+    // mantêm `true` para o `npm run reminders:run` seguir funcionando.
+    emailEnabled: process.env.REMINDERS_EMAIL_ENABLED !== 'false',
     // Vida do marcador de estado do botão "Avise-me" no Redis (Upstash,
     // mesmo store de rate/stream limiter): o marker guarda
     // (userId, channelId, startsAt) e some `stateKeepAfterMs` após o início —

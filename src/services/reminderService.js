@@ -281,6 +281,12 @@ const reminderService = {
       return { enabled: false, examined: 0, sent: 0, failed: 0, skipped: 0, dueWindowMs, batchLimit };
     }
 
+    // Canal de e-mail desligado (produção na Vercel Hobby usa apenas a
+    // Notification do navegador) → no-op deliberado, sem tocar findDue/SMTP.
+    if (config.reminders.emailEnabled === false) {
+      return { enabled: true, emailEnabled: false, examined: 0, sent: 0, failed: 0, skipped: 0, dueWindowMs, batchLimit };
+    }
+
     const emailProvider = typeof opts.emailProvider === 'function'
       ? opts.emailProvider
       : (payload) => emailService.sendReminderEmail(payload);

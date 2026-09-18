@@ -304,6 +304,21 @@ test('runDueReminders: desabilitado → no-op ({enabled:false}) sem consultar fi
   }
 });
 
+test('runDueReminders: canal de e-mail desligado (emailEnabled=false) → no-op sem consultar findDue/SMTP', async () => {
+  const prev = config.reminders.emailEnabled;
+  config.reminders.emailEnabled = false;
+  try {
+    restubRepo({ findDue: async () => { throw new Error('findDue NÃO deveria rodar'); } });
+    const out = await reminderService.runDueReminders({ now: Date.now() });
+    assert.equal(out.enabled, true);
+    assert.equal(out.emailEnabled, false);
+    assert.equal(out.sent, 0);
+    assert.equal(out.examined, 0);
+  } finally {
+    config.reminders.emailEnabled = prev;
+  }
+});
+
 test('runDueReminders: envia e-mail e marca notifiedAt (best-effort idempotente)', async () => {
   let emailed = null;
   let marked = [];

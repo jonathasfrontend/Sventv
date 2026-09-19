@@ -26,10 +26,10 @@
       </div>
 
       <nav class="profile-nav">
-        <a href="#api-token" class="profile-nav-link active">🔑 API Token</a>
-        <a href="#edit-profile" class="profile-nav-link">✏️ Editar Perfil</a>
-        <a href="#security" class="profile-nav-link">🛡️ Segurança</a>
-        <a href="#danger" class="profile-nav-link profile-nav-danger">⚠️ Zona de Perigo</a>
+        <a href="#api-token" class="profile-nav-link active"><i class="ph ph-key" aria-hidden="true"></i> API Token</a>
+        <a href="#edit-profile" class="profile-nav-link"><i class="ph ph-pencil-simple" aria-hidden="true"></i> Editar Perfil</a>
+        <a href="#security" class="profile-nav-link"><i class="ph ph-shield-check" aria-hidden="true"></i> Segurança</a>
+        <a href="#danger" class="profile-nav-link profile-nav-danger"><i class="ph ph-warning" aria-hidden="true"></i> Zona de Perigo</a>
       </nav>
     </aside>
 
@@ -60,9 +60,9 @@
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" id="regenTokenBtn">
-          🔄 Regenerar Token
+          <i class="ph ph-arrows-clockwise" aria-hidden="true"></i> Regenerar Token
         </button>
-        <p class="form-hint">⚠️ Regenerar irá invalidar o token atual imediatamente.</p>
+        <p class="form-hint"><i class="ph ph-warning" aria-hidden="true"></i> Regenerar irá invalidar o token atual imediatamente.</p>
         <div id="tokenAlert" class="form-alert" hidden></div>
       </section>
 
@@ -90,7 +90,6 @@
             </div>
             <button type="submit" class="btn btn-primary btn-sm" id="saveAvatarBtn">
               <span class="btn-text">Atualizar Avatar</span>
-              <span class="btn-spinner" hidden></span>
             </button>
             <div id="avatarAlert" class="form-alert" hidden></div>
           </form>
@@ -111,7 +110,6 @@
           </div>
           <button type="submit" class="btn btn-primary btn-sm" id="saveProfileBtn">
             <span class="btn-text">Salvar Alterações</span>
-            <span class="btn-spinner" hidden></span>
           </button>
           <div id="profileAlert" class="form-alert" hidden></div>
         </form>
@@ -160,7 +158,6 @@
           </div>
           <button type="submit" class="btn btn-primary btn-sm" id="savePasswordBtn">
             <span class="btn-text">Alterar Senha</span>
-            <span class="btn-spinner" hidden></span>
           </button>
           <div id="passwordAlert" class="form-alert" hidden></div>
         </form>
@@ -170,7 +167,7 @@
 
       <!-- Zona de Perigo -->
       <section class="profile-section danger-zone" id="danger">
-        <h3 class="profile-section-title danger-title">⚠️ Zona de Perigo</h3>
+        <h3 class="profile-section-title danger-title"><i class="ph ph-warning" aria-hidden="true"></i> Zona de Perigo</h3>
         <p class="profile-section-desc">Ações irreversíveis. Prossiga com cuidado.</p>
         <button class="btn btn-danger btn-sm" id="deleteAccountBtn">
           Excluir Minha Conta

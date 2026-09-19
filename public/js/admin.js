@@ -149,6 +149,7 @@ function chunkItems(list, size = 50) {
 
 function setBulkBusy(btn, busyText) {
   if (!btn) return;
+  if (window.SvenUI) { SvenUI.setBtnLoading(btn, true, { text: busyText || 'Carregando…' }); return; }
   if (!btn.dataset.restoreText) btn.dataset.restoreText = btn.textContent;
   btn.disabled = true;
   btn.textContent = busyText;
@@ -156,6 +157,7 @@ function setBulkBusy(btn, busyText) {
 
 function clearBulkBusy(btn) {
   if (!btn) return;
+  if (window.SvenUI) { SvenUI.setBtnLoading(btn, false); return; }
   btn.disabled = false;
   btn.textContent = btn.dataset.restoreText || btn.textContent;
 }
@@ -388,8 +390,8 @@ function renderChannels() {
   channelsTableBody.querySelectorAll('[data-check-channel]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const channelId = btn.dataset.checkChannel;
-      btn.classList.add('is-loading');
-      btn.disabled = true;
+      if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+      else { btn.classList.add('is-loading'); btn.disabled = true; }
       try {
         const res = await apiPost(`/api/admin/channels/${channelId}/check`);
         const ch = channelsCache.find(c => c.id === channelId);
@@ -402,8 +404,8 @@ function renderChannels() {
       } catch (err) {
         showAlert('Falha ao verificar canal: ' + err.message);
       } finally {
-        btn.classList.remove('is-loading');
-        btn.disabled = false;
+        if (window.SvenUI) SvenUI.setBtnLoading(btn, false);
+        else { btn.classList.remove('is-loading'); btn.disabled = false; }
       }
     });
   });
@@ -421,8 +423,8 @@ function renderChannels() {
         reason = prompt('Motivo (opcional):', state === 'blocked' ? 'Bloqueio administrativo' : 'Manutenção programada') || '';
       }
 
-      btn.classList.add('is-loading');
-      btn.disabled = true;
+      if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+      else { btn.classList.add('is-loading'); btn.disabled = true; }
       try {
         const res = await apiSend(`/api/admin/channels/${channelId}/state`, 'PUT', { state, reason });
         if (current) {
@@ -434,8 +436,8 @@ function renderChannels() {
       } catch (err) {
         showAlert('Falha ao alterar estado: ' + err.message);
       } finally {
-        btn.classList.remove('is-loading');
-        btn.disabled = false;
+        if (window.SvenUI) SvenUI.setBtnLoading(btn, false);
+        else { btn.classList.remove('is-loading'); btn.disabled = false; }
       }
     });
   });
@@ -483,10 +485,8 @@ async function loadChannels() {
 }
 
 async function checkAllChannels() {
-  if (checkAllChannelsBtn) {
-    checkAllChannelsBtn.disabled = true;
-    checkAllChannelsBtn.textContent = 'Verificando...';
-  }
+  if (checkAllChannelsBtn && window.SvenUI) SvenUI.setBtnLoading(checkAllChannelsBtn, true);
+  else if (checkAllChannelsBtn) { checkAllChannelsBtn.disabled = true; checkAllChannelsBtn.textContent = 'Verificando...'; }
   try {
     await apiPost('/api/admin/channels/check-all');
     await loadChannels();
@@ -494,18 +494,14 @@ async function checkAllChannels() {
   } catch (err) {
     showAlert('Falha ao verificar canais: ' + err.message);
   } finally {
-    if (checkAllChannelsBtn) {
-      checkAllChannelsBtn.disabled = false;
-      checkAllChannelsBtn.textContent = 'Verificar tudo';
-    }
+    if (checkAllChannelsBtn && window.SvenUI) SvenUI.setBtnLoading(checkAllChannelsBtn, false);
+    else if (checkAllChannelsBtn) { checkAllChannelsBtn.disabled = false; checkAllChannelsBtn.textContent = 'Verificar tudo'; }
   }
 }
 
 async function reloadM3U() {
-  if (reloadChannelsBtn) {
-    reloadChannelsBtn.disabled = true;
-    reloadChannelsBtn.textContent = 'Recarregando...';
-  }
+  if (reloadChannelsBtn && window.SvenUI) SvenUI.setBtnLoading(reloadChannelsBtn, true);
+  else if (reloadChannelsBtn) { reloadChannelsBtn.disabled = true; reloadChannelsBtn.textContent = 'Recarregando...'; }
   try {
     await apiPost('/api/admin/channels/reload');
     await loadChannels();
@@ -513,10 +509,8 @@ async function reloadM3U() {
   } catch (err) {
     showAlert('Falha ao recarregar: ' + err.message);
   } finally {
-    if (reloadChannelsBtn) {
-      reloadChannelsBtn.disabled = false;
-      reloadChannelsBtn.textContent = 'Recarregar M3U';
-    }
+    if (reloadChannelsBtn && window.SvenUI) SvenUI.setBtnLoading(reloadChannelsBtn, false);
+    else if (reloadChannelsBtn) { reloadChannelsBtn.disabled = false; reloadChannelsBtn.textContent = 'Recarregar M3U'; }
   }
 }
 
@@ -742,14 +736,13 @@ function refreshUserCard() {
 }
 
 async function withBusy(btn, busyText, fn) {
-  const prev = btn.textContent;
-  btn.disabled = true;
-  if (busyText) btn.textContent = busyText;
+  if (window.SvenUI) SvenUI.setBtnLoading(btn, true, { text: busyText || 'Carregando…' });
+  else btn.disabled = true;
   try {
     await fn();
   } finally {
-    btn.disabled = false;
-    if (busyText) btn.textContent = prev;
+    if (window.SvenUI) SvenUI.setBtnLoading(btn, false);
+    else btn.disabled = false;
   }
 }
 
@@ -1148,17 +1141,33 @@ async function refreshAll() {
   ]);
 }
 
-refreshAdminBtn?.addEventListener('click', () => refreshAll().catch(err => showAlert(err.message)));
-reloadUsersBtn?.addEventListener('click', () => loadUsers().catch(err => showAlert(err.message)));
-checkAllChannelsBtn?.addEventListener('click', () => checkAllChannels().catch(err => showAlert(err.message)));
-reloadChannelsBtn?.addEventListener('click', () => reloadM3U().catch(err => showAlert(err.message)));
-refreshMetricsBtn?.addEventListener('click', () => loadMetrics().catch(err => showAlert(err.message)));
-loadAnalyticsBtn?.addEventListener('click', () => loadAnalytics().catch(err => showAlert(err.message)));
+function bindLoadButton(btn, fn) {
+  btn?.addEventListener('click', async () => {
+    if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+    try { await fn(); }
+    finally { if (window.SvenUI) SvenUI.setBtnLoading(btn, false); }
+  });
+}
+
+function bindDownloadButton(btn, fn) {
+  btn?.addEventListener('click', () => {
+    if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+    fn();
+    setTimeout(() => { if (window.SvenUI) SvenUI.setBtnLoading(btn, false); }, 800);
+  });
+}
+
+bindLoadButton(refreshAdminBtn, () => refreshAll().catch(err => showAlert(err.message)));
+bindLoadButton(reloadUsersBtn, () => loadUsers().catch(err => showAlert(err.message)));
+bindLoadButton(checkAllChannelsBtn, () => checkAllChannels().catch(err => showAlert(err.message)));
+bindLoadButton(reloadChannelsBtn, () => reloadM3U().catch(err => showAlert(err.message)));
+bindLoadButton(refreshMetricsBtn, () => loadMetrics().catch(err => showAlert(err.message)));
+bindLoadButton(loadAnalyticsBtn, () => loadAnalytics().catch(err => showAlert(err.message)));
+bindLoadButton(loadAuditBtn, () => loadAudit().catch(err => showAlert(err.message)));
+bindDownloadButton(document.getElementById('exportAnalyticsBtn'), exportAnalyticsCsv);
+bindDownloadButton(document.getElementById('exportAuditBtn'), exportAuditCsv);
 analyticsPeriod?.addEventListener('change', () => loadAnalytics().catch(err => showAlert(err.message)));
-loadAuditBtn?.addEventListener('click', () => loadAudit().catch(err => showAlert(err.message)));
 auditActionFilter?.addEventListener('change', () => loadAudit().catch(err => showAlert(err.message)));
-document.getElementById('exportAnalyticsBtn')?.addEventListener('click', exportAnalyticsCsv);
-document.getElementById('exportAuditBtn')?.addEventListener('click', exportAuditCsv);
 
 chSelectAll?.addEventListener('change', e => {
   const checked = e.target.checked;
@@ -1211,7 +1220,7 @@ channelSearch?.addEventListener('input', () => {
 channelStatusFilter?.addEventListener('change', renderChannels);
 channelCategoryFilter?.addEventListener('change', renderChannels);
 channelStateFilter?.addEventListener('change', renderChannels);
-refreshLiveBtn?.addEventListener('click', () => loadMetrics().catch(err => showAlert(err.message)));
+bindLoadButton(refreshLiveBtn, () => loadMetrics().catch(err => showAlert(err.message)));
 
 // ── Realtime ───────────────────────────────────────────────
 // Atualiza painéis leves (métricas, auditoria, canais) a cada 30s.

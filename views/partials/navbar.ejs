@@ -78,7 +78,8 @@
 
   // Logout — cookie httpOnly autentica a chamada; o servidor revoga
   // todas as sessões (bump de sessionVersion).
-  async function doLogout() {
+  async function doLogout(btn) {
+    if (btn && window.SvenUI) SvenUI.setBtnLoading(btn, true);
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch(_) {}
@@ -87,6 +88,6 @@
     localStorage.removeItem('user');
     window.location.href = '/';
   }
-  document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
-  document.getElementById('logoutBtnMobile')?.addEventListener('click', doLogout);
+  document.getElementById('logoutBtn')?.addEventListener('click', (e) => doLogout(e.currentTarget));
+  document.getElementById('logoutBtnMobile')?.addEventListener('click', (e) => doLogout(e.currentTarget));
 </script>

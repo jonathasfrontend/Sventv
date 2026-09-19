@@ -113,7 +113,7 @@ async function fetchAllChannels() {
   } catch (err) {
     grid.innerHTML = `
       <div class="channels-empty">
-        ⚠️ Erro ao carregar canais.
+        <i class="ph ph-warning" aria-hidden="true"></i> Erro ao carregar canais.
         <button onclick="init()" class="btn btn-ghost btn-sm">Tentar novamente</button>
       </div>`;
     throw err;
@@ -201,14 +201,14 @@ function render() {
 
   if (!page.length && (state.page > 1 || state.filtered.length === 0)) {
     grid.className = 'channel-grid';
-    grid.innerHTML = `<div class="channels-empty">🔍 Nenhum canal encontrado para esta busca.</div>`;
+    grid.innerHTML = `<div class="channels-empty"><i class="ph ph-magnifying-glass" aria-hidden="true"></i> Nenhum canal encontrado para esta busca.</div>`;
     paginationEl.hidden = true;
     return;
   }
 
   if (!page.length) {
     grid.className = 'channel-grid';
-    grid.innerHTML = `<div class="channels-empty">🔍 Nenhum canal encontrado.</div>`;
+    grid.innerHTML = `<div class="channels-empty"><i class="ph ph-magnifying-glass" aria-hidden="true"></i> Nenhum canal encontrado.</div>`;
     paginationEl.hidden = true;
     return;
   }
@@ -250,12 +250,12 @@ function channelCard(ch) {
         <span class="ch-name">${name}</span>
         <span class="ch-cat">${cat}</span>
       </div>
-      <button class="ch-play-btn" aria-label="Assistir">▶</button>
+      <button class="ch-play-btn" aria-label="Assistir"><i class="ph ph-play" aria-hidden="true"></i></button>
     </div>`;
   }
 
   return `<div class="channel-card" data-id="${ch.id}">
-    <div class="ch-thumb">${logo}<div class="ch-play-overlay">▶</div></div>
+    <div class="ch-thumb">${logo}<div class="ch-play-overlay"><i class="ph ph-play" aria-hidden="true"></i></div></div>
     <div class="ch-info">
       <span class="ch-name">${name}</span>
       <span class="ch-cat badge">${cat}</span>
@@ -325,12 +325,12 @@ function openPlayer(ch) {
 function loadPlayerFrame(ch) {
   if (!ch || !ch.id) {
     playerError.hidden = false;
-    return;
+    return Promise.resolve();
   }
 
   // Busca um playback token curto para este canal e só então carrega
   // o iframe — o API token permanente nunca vai para o player.
-  getPlaybackToken(ch.id)
+  return getPlaybackToken(ch.id)
     .then((pbToken) => {
       playerFrame.src = buildStreamUrl(ch.id, pbToken);
       playerError.hidden = true;
@@ -355,10 +355,14 @@ modalClose?.addEventListener('click', closeModal);
 modal?.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-retryBtn?.addEventListener('click', () => {
-  if (_currentChannel) {
-    playerError.hidden = true;
-    loadPlayerFrame(_currentChannel);
+retryBtn?.addEventListener('click', async () => {
+  if (!_currentChannel) return;
+  playerError.hidden = true;
+  if (window.SvenUI) SvenUI.setBtnLoading(retryBtn, true);
+  try {
+    await loadPlayerFrame(_currentChannel);
+  } finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(retryBtn, false);
   }
 });
 
@@ -608,17 +612,22 @@ saveToPlaylistBtn?.addEventListener('click', async () => {
   savePanel.hidden = false;
   showSaveMsg('', false);
   savePanelMsg.hidden = true;
+  if (window.SvenUI) SvenUI.setBtnLoading(saveToPlaylistBtn, true);
   try {
     await loadSavePlaylists();
     const status = await apiFetchUser(`/api/user/playlists/status/${encodeURIComponent(_currentChannel.id)}`);
     if (status.data) showSaveMsg(`Este canal já está salvo em "${status.data.name}".`, true);
   } catch (_) { /* segue disponível para tentar salvar */ }
+  finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(saveToPlaylistBtn, false);
+  }
 });
 
 saveChannelBtn?.addEventListener('click', async () => {
   if (!_currentChannel?.id) return;
   const chId = _currentChannel.id;
   const newName = saveNewPlaylistName ? saveNewPlaylistName.value.trim() : '';
+  if (window.SvenUI) SvenUI.setBtnLoading(saveChannelBtn, true);
   try {
     if (newName) {
       await apiFetchUser('/api/user/playlists/create-with-channel', {
@@ -639,6 +648,8 @@ saveChannelBtn?.addEventListener('click', async () => {
     loadPersonal().catch(() => {});
   } catch (err) {
     showSaveMsg(err.message || 'Falha ao salvar o canal.', false);
+  } finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(saveChannelBtn, false);
   }
 });
 
@@ -680,13 +691,17 @@ function buildStreamUrl(channelId, token) {
 copyUrlBtn?.addEventListener('click', () => {
   if (!_currentChannel?.id) return;
 
+  if (window.SvenUI) SvenUI.setBtnLoading(copyUrlBtn, true);
   getPlaybackToken(_currentChannel.id)
     .then((pbToken) => navigator.clipboard.writeText(buildStreamUrl(_currentChannel.id, pbToken)))
     .then(() => {
-      copyUrlBtn.textContent = '✓ Copiado!';
-      setTimeout(() => (copyUrlBtn.textContent = '📋 Copiar Embed'), 2000);
+      if (window.SvenUI) SvenUI.setBtnLoading(copyUrlBtn, false);
+      copyUrlBtn.innerHTML = '<i class="ph ph-check" aria-hidden="true"></i> Copiado!';
+      setTimeout(() => (copyUrlBtn.innerHTML = '<i class="ph ph-copy" aria-hidden="true"></i> Copiar Embed'), 2000);
     })
-    .catch(() => {});
+    .catch(() => {
+      if (window.SvenUI) SvenUI.setBtnLoading(copyUrlBtn, false);
+    });
 });
 
 searchInput?.addEventListener('input', () => {

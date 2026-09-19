@@ -154,6 +154,14 @@ input, textarea, select { font-family: var(--font); }
   gap: 6px;
 }
 
+.btn-sven-loading { line-height: 1; }
+.btn-sven-spin { animation: spin 0.8s linear infinite; }
+.btn.is-loading { pointer-events: none; }
+
+/*  Hidden universal: por padrão a UA esconde [hidden], mas regras autor
+    com display (ex: .btn-spinner) vencem a UA — garantir semântica.  */
+[hidden] { display: none !important; }
+
 /*  Inputs  */
 .form-group {
   display: flex;
@@ -240,6 +248,11 @@ input, textarea, select { font-family: var(--font); }
   font-size: 13px;
   font-weight: 500;
   margin-top: 12px;
+}
+
+.form-alert .ph {
+  vertical-align: middle;
+  margin-right: 5px;
 }
 
 .form-alert-error {

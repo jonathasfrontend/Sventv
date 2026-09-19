@@ -25,7 +25,7 @@
   <section class="guia-results" id="guiaResults" hidden>
     <div class="guia-results-head">
       <span id="guiaResultsSummary"></span>
-      <button type="button" class="btn btn-ghost btn-sm" id="guiaResultsClose">✕ Limpar</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="guiaResultsClose"><i class="ph ph-x" aria-hidden="true"></i> Limpar</button>
     </div>
     <div class="guia-results-body" id="guiaResultsBody"></div>
   </section>
@@ -38,11 +38,11 @@
     <div class="epg-now-line" id="epgNowLine" hidden></div>
   </div>
   <div class="channels-empty" id="guiaEmpty" hidden>
-    <p id="guiaEmptyMsg">🔍 Nenhum canal com programação nesta busca.</p>
+    <p id="guiaEmptyMsg"><i class="ph ph-magnifying-glass" aria-hidden="true"></i> Nenhum canal com programação nesta busca.</p>
     <button class="btn btn-ghost btn-sm" id="guiaClearBtn" type="button">Limpar filtros</button>
   </div>
   <div class="channels-empty" id="guiaError" hidden>
-    <p>⚠️ Falha ao carregar o guia de programação.</p>
+    <p><i class="ph ph-warning" aria-hidden="true"></i> Falha ao carregar o guia de programação.</p>
     <button class="btn btn-ghost btn-sm" id="guiaRetryLoad" type="button">Tentar novamente</button>
   </div>
 </main>
@@ -59,7 +59,7 @@
         </div>
       </div>
       <div class="modal-actions">
-        <button class="modal-close" id="dgClose" aria-label="Fechar">✕</button>
+        <button class="modal-close" id="dgClose" aria-label="Fechar"><i class="ph ph-x" aria-hidden="true"></i></button>
       </div>
     </div>
     <div class="modal-body dg-body">
@@ -69,8 +69,8 @@
       <p class="dg-duration" id="dgDuration"></p>
       <p class="dg-desc" id="dgDesc"></p>
       <div class="dg-actions">
-        <button class="btn btn-ghost" id="dgReminderBtn" type="button" hidden>🔔 Avise-me quando começar</button>
-        <button class="btn btn-primary" id="dgWatchBtn" type="button">▶ Assistir ao vivo</button>
+        <button class="btn btn-ghost" id="dgReminderBtn" type="button" hidden><i class="ph ph-bell" aria-hidden="true"></i> Avise-me quando começar</button>
+        <button class="btn btn-primary" id="dgWatchBtn" type="button"><i class="ph ph-play" aria-hidden="true"></i> Assistir ao vivo</button>
       </div>
       <p class="dg-note" id="dgReminderNote" hidden></p>
     </div>
@@ -90,14 +90,14 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="guiaModalNow">Carregando...</button>
-        <button class="modal-close" id="guiaModalClose" aria-label="Fechar">✕</button>
+        <button class="modal-close" id="guiaModalClose" aria-label="Fechar"><i class="ph ph-x" aria-hidden="true"></i></button>
       </div>
     </div>
     <div class="modal-player-wrap">
       <iframe id="guiaPlayerFrame" class="player-iframe" src="about:blank" allowfullscreen
         allow="autoplay; fullscreen; picture-in-picture" frameborder="0" scrolling="no" title="Player SvenTV"></iframe>
       <div class="player-error" id="guiaPlayerError" hidden>
-        <span>⚠️</span>
+        <span><i class="ph ph-warning" aria-hidden="true"></i></span>
         <p>Canal não disponível ou ID inválido.</p>
         <button class="btn btn-ghost btn-sm" id="guiaRetryBtn">Tentar novamente</button>
       </div>

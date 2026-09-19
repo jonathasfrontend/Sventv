@@ -2,11 +2,8 @@
 'use strict';
 
 function setLoading(btn, loading) {
-  const text = btn.querySelector('.btn-text');
-  const spinner = btn.querySelector('.btn-spinner');
-  btn.disabled = loading;
-  if (text) text.hidden = loading;
-  if (spinner) spinner.hidden = !loading;
+  if (window.SvenUI) { SvenUI.setBtnLoading(btn, loading); return; }
+  btn.disabled = !!loading;
 }
 
 function showAlert(el, message, type = 'error') {
@@ -62,7 +59,7 @@ if (form) {
     if (!/^\d{6}$/.test(code)) { setFieldError('code', 'codeError', 'Informe o código de 6 dígitos'); valid = false; }
     if (newPassword.length < 8) { setFieldError('newPassword', 'newPasswordError', 'A nova senha deve ter ao menos 8 caracteres'); valid = false; }
     if (confirmPassword !== newPassword) { setFieldError('confirmPassword', 'confirmPasswordError', 'As senhas não coincidem'); valid = false; }
-    if (!valid) return;
+    if (!valid) { setLoading(btn, false); return; }
 
     setLoading(btn, true);
 

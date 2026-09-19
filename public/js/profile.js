@@ -38,9 +38,16 @@
   }
 
   // ── Alertas ───────────────────────────────────────────────────
-  function showAlert(el, message, type) {
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function showAlert(el, message, type = 'error') {
     if (!el) return;
-    el.textContent = message;
+    const icon = type === 'success' ? 'ph-check-circle' : type === 'warning' ? 'ph-warning' : 'ph-x-circle';
+    el.innerHTML = `<i class="ph ${icon}" aria-hidden="true"></i> ${escapeHtml(message)}`;
     el.dataset.type = type;
     el.hidden = false;
 
@@ -51,16 +58,8 @@
 
   function setLoading(btn, loading) {
     if (!btn) return;
-    const text = btn.querySelector('.btn-text');
-    const spinner = btn.querySelector('.btn-spinner');
-    btn.disabled = loading;
-    if (spinner) spinner.hidden = !loading;
-    if (text && loading) {
-      if (!btn._originalText) btn._originalText = text.textContent;
-      text.textContent = 'Aguarde...';
-    } else if (text && btn._originalText) {
-      text.textContent = btn._originalText;
-    }
+    if (window.SvenUI) { SvenUI.setBtnLoading(btn, loading); return; }
+    btn.disabled = !!loading;
   }
 
   // ════════════════════════════════════════════════════════════
@@ -113,7 +112,7 @@
       setLoading(copyTokenBtn, true);
       await ensureApiToken();
       await navigator.clipboard.writeText(cachedApiToken);
-      showAlert(tokenAlert, '✓ Token copiado para a área de transferência.', 'success');
+      showAlert(tokenAlert, 'Token copiado para a área de transferência.', 'success');
     } catch (err) {
       showAlert(tokenAlert, err.message || 'Não foi possível copiar.', 'error');
     } finally {
@@ -134,7 +133,7 @@
       tokenValue.textContent = cachedApiToken;
       tokenVisible = true;
 
-      showAlert(tokenAlert, '⚠️ Token regenerado. Atualize-o em todas as aplicações que o utilizam.', 'warning');
+      showAlert(tokenAlert, 'Token regenerado. Atualize-o em todas as aplicações que o utilizam.', 'warning');
     } catch (err) {
       showAlert(tokenAlert, err.message, 'error');
     } finally {
@@ -177,6 +176,7 @@
 
     if (!file && !avatarUrlInput.value.trim()) {
       showAlert(avatarAlert, 'Informe uma URL ou selecione um arquivo.', 'error');
+      setLoading(saveAvatarBtn, false);
       return;
     }
 
@@ -200,7 +200,7 @@
       avatarUrlInput.value = '';
       avatarFileInput.value = '';
 
-      showAlert(avatarAlert, '✓ Avatar atualizado com sucesso.', 'success');
+      showAlert(avatarAlert, 'Avatar atualizado com sucesso.', 'success');
     } catch (err) {
       showAlert(avatarAlert, err.message, 'error');
     } finally {
@@ -223,6 +223,7 @@
 
     if (name.length < 2 || name.length > 80) {
       if (nameError) nameError.textContent = 'Nome deve ter entre 2 e 80 caracteres.';
+      setLoading(saveProfileBtn, false);
       return;
     }
 
@@ -239,7 +240,7 @@
       const nameDisplay = $('profileNameDisplay');
       if (nameDisplay) nameDisplay.textContent = newName;
 
-      showAlert(profileAlert, '✓ Perfil atualizado com sucesso.', 'success');
+      showAlert(profileAlert, 'Perfil atualizado com sucesso.', 'success');
     } catch (err) {
       showAlert(profileAlert, err.message, 'error');
     } finally {
@@ -270,18 +271,21 @@
     if (!currentPassword) {
       const el = $('currentPasswordError');
       if (el) el.textContent = 'Informe a senha atual.';
+      setLoading(savePasswordBtn, false);
       return;
     }
 
     if (newPassword !== confirmNewPassword) {
       const el = $('confirmNewPasswordError');
       if (el) el.textContent = 'As senhas não coincidem.';
+      setLoading(savePasswordBtn, false);
       return;
     }
 
     if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword) || newPassword.length < 8) {
       const el = $('newPasswordError');
       if (el) el.textContent = 'Mín. 8 caracteres com maiúscula, minúscula e número.';
+      setLoading(savePasswordBtn, false);
       return;
     }
 
@@ -294,7 +298,7 @@
       });
 
       passwordForm.reset();
-      showAlert(passwordAlert, '✓ Senha alterada com sucesso.', 'success');
+      showAlert(passwordAlert, 'Senha alterada com sucesso.', 'success');
     } catch (err) {
       showAlert(passwordAlert, err.message, 'error');
     } finally {

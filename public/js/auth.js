@@ -16,11 +16,8 @@ function saveSession(data) {
 }
 
 function setLoading(btn, loading) {
-  const text = btn.querySelector('.btn-text');
-  const spinner = btn.querySelector('.btn-spinner');
-  btn.disabled = loading;
-  if (text) text.hidden = loading;
-  if (spinner) spinner.hidden = !loading;
+  if (window.SvenUI) { SvenUI.setBtnLoading(btn, loading); return; }
+  btn.disabled = !!loading;
 }
 
 function showAlert(el, message, type = 'error') {
@@ -103,7 +100,7 @@ if (loginForm) {
     let valid = true;
     if (!email) { setFieldError('email', 'emailError', 'E-mail obrigatório'); valid = false; }
     if (!password) { setFieldError('password', 'passwordError', 'Senha obrigatória'); valid = false; }
-    if (!valid) return;
+    if (!valid) { setLoading(btn, false); return; }
 
     setLoading(btn, true);
 
@@ -161,7 +158,7 @@ if (registerForm) {
     if (!password || password.length < 8) { setFieldError('password', 'passwordError', 'Senha deve ter ao menos 8 caracteres'); valid = false; }
     if (password !== confirmPassword) { setFieldError('confirmPassword', 'confirmPasswordError', 'As senhas não coincidem'); valid = false; }
     if (!terms) { setFieldError('terms', 'termsError', 'Aceite os termos para continuar'); valid = false; }
-    if (!valid) return;
+    if (!valid) { setLoading(btn, false); return; }
 
     setLoading(btn, true);
 

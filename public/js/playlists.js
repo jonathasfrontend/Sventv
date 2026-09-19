@@ -32,6 +32,7 @@ async function apiFetchUser(endpoint, options = {}) {
 
 /* ── Elementos ──────────────────────────────────────────── */
 const createForm       = document.getElementById('createPlaylistForm');
+const createSubmitBtn  = document.getElementById('createPlaylistSubmit');
 const newPlaylistName  = document.getElementById('newPlaylistName');
 const newPlaylistDesc  = document.getElementById('newPlaylistDescription');
 const newNameError     = document.getElementById('newPlaylistNameError');
@@ -82,20 +83,24 @@ async function fetchPlaybackToken(channelId) {
   return json.data.playbackToken;
 }
 
-function openPlayer(ch) {
+async function openPlayer(ch, btn) {
   modalTitle.textContent    = ch.name || 'Canal';
   modalCategory.textContent = ch.category || 'Geral';
   playerError.hidden = true;
   if (ch.logo) { modalLogo.src = ch.logo; modalLogo.style.display = ''; }
   else { modalLogo.style.display = 'none'; }
 
-  fetchPlaybackToken(ch.id)
-    .then((pbToken) => {
-      playerFrame.src = `/api/channels/${encodeURIComponent(ch.id)}/stream?token=${encodeURIComponent(pbToken)}`;
-      playerError.hidden = true;
-      playerFrame.onerror = () => { playerError.hidden = false; };
-    })
-    .catch(() => { playerError.hidden = false; });
+  if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, true);
+  try {
+    const pbToken = await fetchPlaybackToken(ch.id);
+    playerFrame.src = `/api/channels/${encodeURIComponent(ch.id)}/stream?token=${encodeURIComponent(pbToken)}`;
+    playerError.hidden = true;
+    playerFrame.onerror = () => { playerError.hidden = false; };
+  } catch (_) {
+    playerError.hidden = false;
+  } finally {
+    if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, false);
+  }
 
   modal.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -133,10 +138,10 @@ async function loadPlaylists(silent) {
       </div>`).join('');
 
     playlistsList.querySelectorAll('.playlist-open').forEach((btn, i) => {
-      btn.addEventListener('click', () => openPlaylist(items[i]));
+      btn.addEventListener('click', () => openPlaylist(items[i], false, btn));
     });
     playlistsList.querySelectorAll('.playlist-delete').forEach((btn, i) => {
-      btn.addEventListener('click', () => deletePlaylist(items[i]));
+      btn.addEventListener('click', () => deletePlaylist(items[i], btn));
     });
   } catch (err) {
     if (!silent) showCreateAlert(err.message, false);
@@ -151,6 +156,7 @@ createForm.addEventListener('submit', async (e) => {
   if (!name) {
     newNameError.textContent = 'Informe um nome para a playlist.';
     newPlaylistName.focus();
+    if (window.SvenUI) SvenUI.setBtnLoading(createSubmitBtn, false);
     return;
   }
   try {
@@ -165,27 +171,33 @@ createForm.addEventListener('submit', async (e) => {
     await loadPlaylists();
   } catch (err) {
     showCreateAlert(err.message, false);
+  } finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(createSubmitBtn, false);
   }
 });
 
-async function deletePlaylist(playlist) {
+async function deletePlaylist(playlist, btn) {
   if (!confirm(`Excluir a playlist "${playlist.name}"?`)) return;
+  if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, true);
   try {
     await apiFetchUser(`/api/user/playlists/${encodeURIComponent(playlist.id)}`, { method: 'DELETE' });
     if (_activePlaylist && _activePlaylist.id === playlist.id) closeDetail();
     await loadPlaylists();
   } catch (err) {
     showCreateAlert(err.message, false);
+  } finally {
+    if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, false);
   }
 }
 
 /* ── Detalhe: canais da playlist ─────────────────────────── */
-async function openPlaylist(playlist, silent) {
+async function openPlaylist(playlist, silent, btn) {
   _activePlaylist = playlist;
   detailSection.hidden = false;
   detailTitle.textContent = playlist.name;
   detailDesc.textContent = playlist.description || '';
   if (!silent) detailChannels.innerHTML = '<p class="playlist-loading">Carregando canais...</p>';
+  if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, true);
 
   try {
     const json = await apiFetchUser(`/api/user/playlists/${encodeURIComponent(playlist.id)}/channels?limit=500`);
@@ -204,31 +216,34 @@ async function openPlaylist(playlist, silent) {
           <span class="pcard-cat">${esc(ch.category || 'Geral')}</span>
         </div>
         <div class="pcard-actions">
-          <button class="btn btn-primary btn-sm ch-watch">▶ Assistir</button>
-          <button class="btn btn-danger btn-sm ch-remove">✕ Remover</button>
+          <button class="btn btn-primary btn-sm ch-watch"><i class="ph ph-play" aria-hidden="true"></i> Assistir</button>
+          <button class="btn btn-danger btn-sm ch-remove"><i class="ph ph-x" aria-hidden="true"></i> Remover</button>
         </div>
       </div>`).join('');
 
     detailChannels.querySelectorAll('.ch-watch').forEach((btn, i) => {
-      btn.addEventListener('click', () => openPlayer(channels[i]));
+      btn.addEventListener('click', () => openPlayer(channels[i], btn));
     });
     detailChannels.querySelectorAll('.ch-remove').forEach((btn, i) => {
-      btn.addEventListener('click', () => removeChannel(playlist.id, channels[i]));
+      btn.addEventListener('click', () => removeChannel(playlist.id, channels[i], btn));
     });
     // Ctrl/Alt+Click não interfere: o card inteiro abre o player também.
     detailChannels.querySelectorAll('.pcard').forEach((card, i) => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
-        openPlayer(channels[i]);
+        openPlayer(channels[i], card.querySelector('.ch-watch'));
       });
     });
   } catch (err) {
     if (!silent) detailChannels.innerHTML = `<p class="playlist-loading">${esc(err.message)}</p>`;
+  } finally {
+    if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, false);
   }
 }
 
-async function removeChannel(playlistId, channel) {
+async function removeChannel(playlistId, channel, btn) {
   if (!confirm(`Remover "${channel.name}" da playlist?`)) return;
+  if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, true);
   try {
     await apiFetchUser(`/api/user/playlists/${encodeURIComponent(playlistId)}/channels/${encodeURIComponent(channel.id)}`, {
       method: 'DELETE',
@@ -237,6 +252,8 @@ async function removeChannel(playlistId, channel) {
     await loadPlaylists(true);
   } catch (err) {
     detailChannels.innerHTML = `<p class="playlist-loading">${esc(err.message)}</p>`;
+  } finally {
+    if (window.SvenUI && btn) SvenUI.setBtnLoading(btn, false);
   }
 }
 

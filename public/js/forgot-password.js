@@ -2,11 +2,8 @@
 'use strict';
 
 function setLoading(btn, loading) {
-  const text = btn.querySelector('.btn-text');
-  const spinner = btn.querySelector('.btn-spinner');
-  btn.disabled = loading;
-  if (text) text.hidden = loading;
-  if (spinner) spinner.hidden = !loading;
+  if (window.SvenUI) { SvenUI.setBtnLoading(btn, loading); return; }
+  btn.disabled = !!loading;
 }
 
 function showAlert(el, message, type = 'error') {
@@ -42,6 +39,7 @@ if (form) {
 
     if (!email) {
       setFieldError('email', 'emailError', 'Informe seu e-mail');
+      setLoading(btn, false);
       return;
     }
 

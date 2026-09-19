@@ -370,9 +370,11 @@ function showEmptyIfNeeded() {
   if (errorShown()) { emptyEl.hidden = true; return; }
   const any = state.rows.some((row) => !row.rowEl.hidden);
   if (any) { emptyEl.hidden = true; return; }
-  emptyMsg.textContent = state.rows.length === 0
-    ? '📺 Nenhum canal com programação disponível no momento.'
-    : '🔍 Nenhum canal com programação nesta busca.';
+  const icon = state.rows.length === 0 ? 'ph-television' : 'ph-magnifying-glass';
+  const text = state.rows.length === 0
+    ? 'Nenhum canal com programação disponível no momento.'
+    : 'Nenhum canal com programação nesta busca.';
+  emptyMsg.innerHTML = `<i class="ph ${icon}" aria-hidden="true"></i> ${text}`;
   emptyEl.hidden = false;
 }
 
@@ -502,9 +504,9 @@ function updateDetailReminder() {
   const perm = notificationState();
   if (perm === 'unsupported' || perm === 'denied') return;
   const existing = state.reminderIndex.get(reminderKey(_detail.ch.id, _detail.prog.start));
-  dgReminderBtn.textContent = existing
-    ? '✓ Lembrete criado'
-    : '🔔 Avise-me quando começar';
+  dgReminderBtn.innerHTML = existing
+    ? '<i class="ph ph-check" aria-hidden="true"></i> Lembrete criado'
+    : '<i class="ph ph-bell" aria-hidden="true"></i> Avise-me quando começar';
   dgReminderBtn.title = existing
     ? 'Clique para remover o lembrete'
     : 'Notifico quando este programa começar';
@@ -630,7 +632,9 @@ function openDetail(prog, ch) {
 
   if (ch.state === 'live') {
     dgWatchBtn.hidden = false;
-    dgWatchBtn.textContent = live ? '▶ Assistir ao vivo' : '▶ Antecipar · assistir agora';
+    dgWatchBtn.innerHTML = live
+      ? '<i class="ph ph-play" aria-hidden="true"></i> Assistir ao vivo'
+      : '<i class="ph ph-play" aria-hidden="true"></i> Antecipar · assistir agora';
   } else {
     dgWatchBtn.hidden = true;
     dgDesc.textContent = ch.state === 'maintenance'
@@ -709,8 +713,8 @@ function buildStreamUrl(channelId, token) {
 }
 
 function loadPlayer(ch) {
-  if (!ch || !ch.id) { playerError.hidden = false; return; }
-  getPlaybackToken(ch.id)
+  if (!ch || !ch.id) { playerError.hidden = false; return Promise.resolve(); }
+  return getPlaybackToken(ch.id)
     .then((token) => {
       frame.src = buildStreamUrl(ch.id, token);
       playerError.hidden = true;
@@ -758,7 +762,11 @@ clearBtn?.addEventListener('click', () => {
   applyFilters();
   resultsPanel.hidden = true;
 });
-retryLoad?.addEventListener('click', () => { init(); });
+retryLoad?.addEventListener('click', async () => {
+  if (window.SvenUI) SvenUI.setBtnLoading(retryLoad, true);
+  try { await init(); }
+  finally { if (window.SvenUI) SvenUI.setBtnLoading(retryLoad, false); }
+});
 
 searchInput?.addEventListener('input', () => {
   clearTimeout(state.debounceTimer);
@@ -794,19 +802,42 @@ resultsClose?.addEventListener('click', () => {
 });
 
 // Avise-me: toggle o lembrete ao clicar no botão do modal
-dgReminderBtn?.addEventListener('click', () => toggleReminder());
+dgReminderBtn?.addEventListener('click', async () => {
+  const btn = dgReminderBtn;
+  if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+  try {
+    await toggleReminder();
+  } finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(btn, false);
+    updateDetailReminder();
+  }
+});
 
 // Detail modal
 dgClose?.addEventListener('click', closeDetail);
 detailModal?.addEventListener('click', (e) => { if (e.target === detailModal) closeDetail(); });
-dgWatchBtn?.addEventListener('click', () => {
-  if (_detail && _detail.ch) { openChannel(_detail.ch); }
+dgWatchBtn?.addEventListener('click', async () => {
+  const ch = _detail && _detail.ch;
+  if (!ch) return;
+  const btn = dgWatchBtn;
+  if (window.SvenUI) SvenUI.setBtnLoading(btn, true);
+  try {
+    openChannel(ch);
+    await loadPlayer(ch).catch(() => {});
+  } finally {
+    if (window.SvenUI) SvenUI.setBtnLoading(btn, false);
+  }
 });
 
 // Player modal
 modalCloseBtn?.addEventListener('click', closePlayer);
 playerModal?.addEventListener('click', (e) => { if (e.target === playerModal) closePlayer(); });
-retryBtn?.addEventListener('click', () => { if (_current) loadPlayer(_current); });
+retryBtn?.addEventListener('click', async () => {
+  if (!_current) return;
+  if (window.SvenUI) SvenUI.setBtnLoading(retryBtn, true);
+  try { await loadPlayer(_current); }
+  finally { if (window.SvenUI) SvenUI.setBtnLoading(retryBtn, false); }
+});
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;

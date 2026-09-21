@@ -145,6 +145,20 @@ const requireSessionOrApi = async (req, res, next) => {
     // Caminho 2: API token de aplicações
     const { user, error } = await validateApiToken(token);
     if (error) {
+      // Caminho 3 (fallback do painel web): o token do header/query é
+      // inválido ou está desatualizado (ex.: API token antigo em
+      // localStorage), MAS há cookie de sessão httpOnly válido. O
+      // navegador continua autenticado — aceitar a sessão evita um 401
+      // que faria a página voltar ao /login em loop (estouro de rate limit).
+      const cookieToken = req.cookies && req.cookies.sessionToken;
+      if (cookieToken && cookieToken !== token) {
+        const cookieSession = await validateSessionToken(cookieToken);
+        if (!cookieSession.error) {
+          req.user = cookieSession.user;
+          req.authKind = 'session';
+          return next();
+        }
+      }
       return res.status(error.status).json({ success: false, message: error.message });
     }
     req.user = user;

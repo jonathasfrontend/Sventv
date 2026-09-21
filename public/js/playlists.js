@@ -2,22 +2,52 @@
 
 /* =============================================================
    Playlists — gerencia playlists do usuário via API.
-   Autenticação: API token (localStorage) OU cookie de sessão.
+   Autenticação: cookie de sessão (httpOnly). As rotas de canais/
+   playback exigem API token, então ele é buscado sob demanda em
+   GET /api/auth/api-token (autenticado pela sessão).
    ============================================================= */
 
-const apiToken = (() => {
+let apiToken = (() => {
   try { return localStorage.getItem('apiToken') || ''; }
   catch (_) { return ''; }
 })();
+let _apiTokenPromise = null;
+
+function authHeaders() {
+  return apiToken ? { Authorization: `Bearer ${apiToken}` } : {};
+}
+
+async function ensureApiToken() {
+  if (apiToken) return apiToken;
+  if (!_apiTokenPromise) {
+    _apiTokenPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/api-token', { credentials: 'same-origin', cache: 'no-store' });
+        if (res.status === 401) {
+          window.location.href = '/login?returnTo=/playlists';
+          return '';
+        }
+        const json = await res.json();
+        apiToken = (json && json.data && json.data.apiToken) || '';
+        if (apiToken) {
+          try { localStorage.setItem('apiToken', apiToken); } catch (_) { /* best-effort */ }
+        }
+      } catch (_) { /* rede indisponível — a chamada seguinte decide */ }
+      return apiToken;
+    })().finally(() => { _apiTokenPromise = null; });
+  }
+  return _apiTokenPromise;
+}
 
 async function apiFetchUser(endpoint, options = {}) {
-  const headers = {};
-  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  await ensureApiToken();
+  const headers = authHeaders();
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(endpoint, { ...options, headers, credentials: 'same-origin' });
   if (res.status === 401) {
     localStorage.removeItem('apiToken');
-    window.location.href = '/login';
+    apiToken = '';
+    window.location.href = '/login?returnTo=/playlists';
     throw new Error('Não autorizado');
   }
   const json = await res.json();
@@ -72,9 +102,11 @@ function showCreateAlert(message, ok) {
 }
 
 async function fetchPlaybackToken(channelId) {
+  await ensureApiToken();
   const res = await fetch(`/api/channels/${encodeURIComponent(channelId)}/playback`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'same-origin',
   });
   const json = await res.json();
   if (!res.ok || !json?.data?.playbackToken) {

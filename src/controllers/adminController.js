@@ -10,9 +10,11 @@ const channelHealthRepository = require('../repositories/channelHealthRepository
 const playbackService = require('../services/playbackService');
 const retentionService = require('../services/retentionService');
 const { audit } = require('../services/auditService');
+const alertService = require('../services/alertService');
 const { snapshot: metricsSnapshot, inc } = require('../utils/metrics');
 const logger = require('../utils/logger');
 const analyticsService = require('../services/analyticsService');
+const userMetricsService = require('../services/userMetricsService');
 const { resolveRange } = require('../utils/analytics');
 const config = require('../config/app');
 const User = require('../models/User');
@@ -356,6 +358,17 @@ const adminController = {
         meta: { role, prevRole: target.role, by: req.user?.email },
       });
 
+      if (role === 'admin') {
+        // Escalada para admin = evento sensível: alerta SEMPRE (chave com
+        // timestamp p/ nunca ser engolida pelo debounce). Fire-and-forget.
+        alertService.notify(`admin.role_escalation:${userId}:${Date.now()}`, {
+          event: 'admin.role_escalation',
+          targetUserId: userId,
+          targetEmail: target.email,
+          changedBy: req.user?.email || null,
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Role atualizada com sucesso.',
@@ -624,6 +637,14 @@ const adminController = {
         userId,
         email: target.email,
         meta: { deletedEmail: target.email, by: req.user?.email },
+      });
+
+      // Chave com timestamp: exclusões sucessivas NUNCA são engolidas pelo debounce.
+      alertService.notify(`admin.user_deleted:${userId}:${Date.now()}`, {
+        event: 'admin.user_deleted',
+        targetUserId: userId,
+        deletedEmail: target.email,
+        deletedBy: req.user?.email || null,
       });
 
       return res.status(200).json({
@@ -940,6 +961,38 @@ const adminController = {
   },
 
   /**
+   * GET /admin/metrics/users?period=week|month|quarter|semester
+   *
+   * Métricas agregadas de usuários (administrativas) — computadas AO VIVO
+   * a partir de `users`, `watch_history` e `audit_logs`. Resposta 100%
+   * agregada: nunca expõe e-mail/nome/IP de usuário individual.
+   *
+   * Sem `period` → week (padrão). Valor inválido → 422 (mesmo padrão do
+   * irmão /metrics/analytics).
+   */
+  async getUserMetrics(req, res, next) {
+    try {
+      const period = String(req.query.period || 'week').toLowerCase();
+      const data = await userMetricsService.getOverview(period);
+
+      if (!data) {
+        return res.status(422).json({
+          success: false,
+          message: 'Período inválido. Use week, month, quarter ou semester.',
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Métricas de usuários carregadas.',
+        data,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
    * POST /admin/metrics/aggregate
    * Backfill manual das tabelas diárias (ChannelMetric/UserMetric) para
    * um range máximo de 90 dias. Útil para popular histórico/resgate.
@@ -1145,6 +1198,14 @@ const adminController = {
               email: target.email,
               meta: { role, prevRole: target.role, by: req.user?.email },
             });
+            if (item.action === 'promote') {
+              alertService.notify(`admin.role_escalation:${item.userId}:${Date.now()}`, {
+                event: 'admin.role_escalation',
+                targetUserId: item.userId,
+                targetEmail: target.email,
+                changedBy: req.user?.email || null,
+              });
+            }
             applied += 1;
             results.push({ ...base, success: true, role });
             continue;
@@ -1158,6 +1219,12 @@ const adminController = {
               userId: item.userId,
               email: target.email,
               meta: { deletedEmail: target.email, by: req.user?.email },
+            });
+            alertService.notify(`admin.user_deleted:${item.userId}:${Date.now()}`, {
+              event: 'admin.user_deleted',
+              targetUserId: item.userId,
+              deletedEmail: target.email,
+              deletedBy: req.user?.email || null,
             });
             applied += 1;
             results.push({ ...base, success: true });

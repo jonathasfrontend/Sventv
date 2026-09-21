@@ -79,7 +79,7 @@
   async function ensureApiToken() {
     if (cachedApiToken) return cachedApiToken;
 
-    const json = await apiFetch('/api/auth/api-token');
+    const json = await apiFetch('/api/auth/api-token', { cache: 'no-store' });
     cachedApiToken = json.data.apiToken;
 
     return cachedApiToken;

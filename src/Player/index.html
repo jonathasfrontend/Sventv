@@ -15,6 +15,9 @@
     <div class="player_info" id="channelInfo">
       <!-- Channel Info -->
       <div class="player_content">
+        <div class="player__logo">
+          <img src="{{CHANNEL_LOGO}}" alt="{{CHANNEL_NAME}} Logo" class="player__logo-img">
+        </div>
         <div class="player__channel-name">{{CHANNEL_NAME}}</div>
       </div>
       <!-- Badge AO VIVO -->
@@ -123,6 +126,7 @@
       reminderAuth: '{{CHANNEL_REMINDER_AUTH}}'
     };
   </script>
+  <script src="/js/reminder-notifier.js"></script>
   <script src="/Player/reminderBar.js"></script>
   <script src="/Player/epgBar.js"></script>
   <script src="/Player/player.js"></script>

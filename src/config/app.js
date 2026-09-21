@@ -255,7 +255,11 @@ const config = {
   // O usuário pede para ser notificado quando um programa DO EPG começar. Dois
   // canais de entrega independentes, sem duplicar (o flag `notifiedAt` fecha o
   // ciclo de quem marcar primeiro):
-  //   1) frontend — browser Notification API (two-phase, ~30s de pré-aviso);
+  //   1) frontend — browser Notification API via dispatcher compartilhado
+  //      (public/js/reminder-notifier.js): polling a cada ~30s MESMO com a aba
+  //      em segundo plano, notifica na janela [agora−trail, agora+lead]
+  //      (padrão 15min de recuperação + 60s de pré-aviso); as janelas são
+  //      configuradas no cliente, o servidor aceita ?trail= (clamp 0..30min);
   //   2) servidor — cron de e-mail (POST /api/internal/reminders/run, a cada
   //      5 min na Vercel) envia SMTP para lembretes com startsAt dentro de
   //      `dueWindowMs`. O serviço NUNCA envia push com a página fechada,
@@ -295,11 +299,18 @@ const config = {
   },
 
   // ---- Alertas operacionais (admin) ----
-  // Eventos relevantes (failover/failback de canal, falha de SMTP, queda do
-  // Redis com fallback) notificam o admin via e-mail e/ou webhook. Fire-and-
-  // forget: falha de envio NUNCA derruba o fluxo principal. O cooldown é por
-  // evento e por lambda (limitação documentada — serverless não tem timer
-  // único). A URL do webhook é SEGREDO: nunca logar/expor.
+  // Eventos de infra (failover/failback de canal, falha de SMTP, queda do
+  // Redis com fallback) E de usuário (registro, bloqueio por tentativas,
+  // teto de reset, promoção a admin, exclusão de conta, rate limit de
+  // registro) notificam o admin via e-mail e/ou webhook. Fire-and-forget:
+  // falha de envio NUNCA derruba o fluxo principal. O cooldown é por evento
+  // e por lambda (limitação documentada — serverless não tem timer único).
+  // Regra de eventKey (alertService): sistema=genérica; usuário=por id;
+  // ação admin única=id+timestamp; rate limit=genérica. Payloads SÓ com
+  // ids/nomes/e-mails — nunca senha/token/segredo. Apresentação por evento
+  // em EVENT_META no alertService (título/emoji/cor/categoria → e-mail HTML
+  // com design + embed rico do Discord). A URL do webhook é SEGREDO:
+  // nunca logar/expor.
   alerts: {
     enabled: process.env.ALERTS_ENABLED !== 'false',
     adminEmail: process.env.ADMIN_ALERT_EMAIL || '',

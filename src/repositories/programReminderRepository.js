@@ -18,14 +18,22 @@ const prisma = require('../prisma/client');
 const programReminderRepository = {
   /**
    * Lista lembretes de um usuário, ordenados por início. Quando `upcoming` é
-   * verdadeiro (padrão), retorna apenas os que ainda não começaram.
+   * verdadeiro (padrão), retorna apenas os que ainda não começaram — ou, se
+   * `trailMs` for informado, os que começaram há menos de `trailMs` (janela
+   * de recuperação do dispatcher "Avise-me": aba de fundo throttled / página
+   * reaberta logo após o início ainda consegue disparar a notificação).
    */
-  async listByUser(userId, { limit = 50, upcoming = true } = {}) {
+  async listByUser(userId, { limit = 50, upcoming = true, trailMs = 0 } = {}) {
     const take = Math.min(200, Math.max(1, Number(limit) || 50));
+    let startsAt = null;
+    if (upcoming) {
+      const trail = Math.max(0, Number(trailMs) || 0);
+      startsAt = { gte: new Date(Date.now() - trail) };
+    }
     const rows = await prisma.programReminder.findMany({
       where: {
         userId,
-        ...(upcoming ? { startsAt: { gte: new Date() } } : {}),
+        ...(startsAt ? { startsAt } : {}),
       },
       orderBy: [{ startsAt: 'asc' }],
       take,

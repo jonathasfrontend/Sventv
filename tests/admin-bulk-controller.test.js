@@ -13,8 +13,22 @@
  * controlador (auto-start de probes abriria dezenas de sockets em teste).
  */
 
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+
+const alertService = require('../src/services/alertService');
+
+// bulkUserActions agora dispara alertService.notify (role_escalation/user_deleted)
+// em itens bem-sucedidos — sinks de captura garantem que NENHUM alerta de teste
+// sai para o webhook/e-mail REAL configurado no .env.
+before(() => {
+  alertService.resetCooldown();
+  alertService._setSinks({ sendEmail: async () => true, sendWebhook: async () => true });
+});
+after(() => {
+  alertService._setSinks(null);
+  alertService.resetCooldown();
+});
 
 const HEALTH_PATH = require.resolve('../src/services/channelHealthService');
 class FakeHealthService {

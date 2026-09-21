@@ -12,6 +12,7 @@ const User = require('../models/User');
 const logger = require('../utils/logger');
 const config = require('../config/app');
 const metrics = require('../utils/metrics');
+const alertService = require('./alertService');
 const { isDatabaseConnected, createDatabaseUnavailableError } = require('../utils/dbState');
 const { passwordPolicyErrors } = require('../utils/passwordPolicy');
 
@@ -104,6 +105,17 @@ const authService = {
     }
 
     metrics.inc('termsAccepted');
+
+    // Alerta administrativo (fire-and-forget): conta criada. Chave por usuário
+    // para que o debounce por cooldown nunca engula registros distintos.
+    // NUNCA incluir senha/hash/token — apenas ids/nomes/email (regra do alertService).
+    alertService.notify('auth.user_registered:' + user._id, {
+      event: 'auth.user_registered',
+      userId: user._id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+    });
 
     // Busca com apiToken para retorno no registro
     const userWithToken = await User.findByIdWithSensitive(user._id);

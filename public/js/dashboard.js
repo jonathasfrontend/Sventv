@@ -13,10 +13,38 @@ const __SSR__ = (() => {
 })();
 
 // Token para chamadas de API subsequentes (filtros, busca, paginação).
-// A sessão web (páginas) usa o cookie httpOnly — nunca localStorage.
-const apiToken = __SSR__.apiToken || localStorage.getItem('apiToken');
-if (!apiToken) {
-  window.location.href = '/login';
+// A sessão web (páginas) vive no cookie httpOnly — nunca em localStorage.
+// As rotas de canais/EPG exigem API token, então buscamos sob demanda em
+// GET /api/auth/api-token (autenticado pela sessão). NUNCA redirecionar
+// para /login apenas por falta de token local: a sessão pode ser válida e
+// /login devolve o usuário para cá (loop infinito + estouro de rate limit).
+let apiToken = __SSR__.apiToken || localStorage.getItem('apiToken') || '';
+let _apiTokenPromise = null;
+
+function authHeaders() {
+  return apiToken ? { Authorization: `Bearer ${apiToken}` } : {};
+}
+
+async function ensureApiToken() {
+  if (apiToken) return apiToken;
+  if (!_apiTokenPromise) {
+    _apiTokenPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/api-token', { credentials: 'same-origin', cache: 'no-store' });
+        if (res.status === 401) {
+          window.location.href = '/login?returnTo=/dashboard';
+          return '';
+        }
+        const json = await res.json();
+        apiToken = (json && json.data && json.data.apiToken) || '';
+        if (apiToken) {
+          try { localStorage.setItem('apiToken', apiToken); } catch (_) { /* best-effort */ }
+        }
+      } catch (_) { /* rede indisponível — a chamada seguinte decide */ }
+      return apiToken;
+    })().finally(() => { _apiTokenPromise = null; });
+  }
+  return _apiTokenPromise;
 }
 
 // ── Estado ───────────────────────────────────────────────────
@@ -80,22 +108,24 @@ const trendingSeriesList     = document.getElementById('trendingSeriesList');
 const trendingChannelsBlock  = document.getElementById('trendingChannelsBlock');
 const trendingChannelsList   = document.getElementById('trendingChannelsList');
 
-// Save-to-playlist (painel dentro do modal)
+// Save-to-playlist (dropdown dentro do modal)
 const saveToPlaylistBtn   = document.getElementById('saveToPlaylistBtn');
 const savePanel           = document.getElementById('savePanel');
 const savePlaylistSelect  = document.getElementById('savePlaylistSelect');
-const saveNewPlaylistName = document.getElementById('saveNewPlaylistName');
 const saveChannelBtn      = document.getElementById('saveChannelBtn');
 const savePanelMsg        = document.getElementById('savePanelMsg');
 
 // ── API fetch (filtros/busca/paginação após carga inicial) ────
 async function apiFetch(endpoint) {
+  await ensureApiToken();
   const res = await fetch(endpoint, {
-    headers: { Authorization: `Bearer ${apiToken}` },
+    headers: authHeaders(),
+    credentials: 'same-origin',
   });
   if (res.status === 401) {
     localStorage.removeItem('apiToken');
-    window.location.href = '/login';
+    apiToken = '';
+    window.location.href = '/login?returnTo=/dashboard';
     return null;
   }
   if (!res.ok) throw new Error(`Erro ${res.status}`);
@@ -369,13 +399,14 @@ retryBtn?.addEventListener('click', async () => {
 // ── Pessoal (recents / playlists / recomendações) ────────────
 // /api/dashboard é uma chamada privada (session OU api token).
 async function apiFetchUser(endpoint, options = {}) {
-  const headers = {};
-  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  await ensureApiToken();
+  const headers = authHeaders();
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(endpoint, { ...options, headers, credentials: 'same-origin' });
   if (res.status === 401) {
     localStorage.removeItem('apiToken');
-    window.location.href = '/login';
+    apiToken = '';
+    window.location.href = '/login?returnTo=/dashboard';
     throw new Error('Não autorizado');
   }
   const json = await res.json();
@@ -577,8 +608,20 @@ async function loadPersonal() {
   }
 }
 
-// ── Salvar na playlist (painel no modal do player) ──────────
+// ── Salvar na playlist (dropdown no modal do player) ─────────
 let _savePlaylists = [];
+let _saveCloseTimer = null;
+
+function closeSavePanel() {
+  if (savePanel) savePanel.hidden = true;
+}
+
+function openSavePanel() {
+  if (!savePanel) return;
+  savePanel.hidden = false;
+  showSaveMsg('', false);
+  savePanelMsg.hidden = true;
+}
 
 async function loadSavePlaylists() {
   const json = await apiFetchUser('/api/user/playlists?limit=100');
@@ -609,9 +652,8 @@ function showSaveMsg(message, ok) {
 
 saveToPlaylistBtn?.addEventListener('click', async () => {
   if (!_currentChannel?.id) return;
-  savePanel.hidden = false;
-  showSaveMsg('', false);
-  savePanelMsg.hidden = true;
+  if (!savePanel.hidden) { closeSavePanel(); return; }
+  openSavePanel();
   if (window.SvenUI) SvenUI.setBtnLoading(saveToPlaylistBtn, true);
   try {
     await loadSavePlaylists();
@@ -623,29 +665,30 @@ saveToPlaylistBtn?.addEventListener('click', async () => {
   }
 });
 
+document.addEventListener('click', (e) => {
+  const drop = document.getElementById('saveDrop');
+  if (drop && !drop.contains(e.target) && savePanel && !savePanel.hidden) closeSavePanel();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && savePanel && !savePanel.hidden) closeSavePanel();
+});
+
 saveChannelBtn?.addEventListener('click', async () => {
   if (!_currentChannel?.id) return;
   const chId = _currentChannel.id;
-  const newName = saveNewPlaylistName ? saveNewPlaylistName.value.trim() : '';
+  const pid = savePlaylistSelect ? savePlaylistSelect.value : '';
+  if (!pid) { showSaveMsg('Selecione uma playlist para salvar.', false); return; }
   if (window.SvenUI) SvenUI.setBtnLoading(saveChannelBtn, true);
   try {
-    if (newName) {
-      await apiFetchUser('/api/user/playlists/create-with-channel', {
-        method: 'POST',
-        body: JSON.stringify({ name: newName, channelId: chId }),
-      });
-      showSaveMsg(`Playlist "${newName}" criada com o canal.`, true);
-    } else {
-      const pid = savePlaylistSelect.value;
-      if (!pid) { showSaveMsg('Selecione uma playlist ou crie uma nova.', false); return; }
-      await apiFetchUser(`/api/user/playlists/${encodeURIComponent(pid)}/channels`, {
-        method: 'POST',
-        body: JSON.stringify({ channelId: chId }),
-      });
-      showSaveMsg('Canal salvo na playlist.', true);
-    }
-    if (saveNewPlaylistName) saveNewPlaylistName.value = '';
+    await apiFetchUser(`/api/user/playlists/${encodeURIComponent(pid)}/channels`, {
+      method: 'POST',
+      body: JSON.stringify({ channelId: chId }),
+    });
+    showSaveMsg('Canal salvo na playlist.', true);
     loadPersonal().catch(() => {});
+    clearTimeout(_saveCloseTimer);
+    _saveCloseTimer = setTimeout(closeSavePanel, 1400);
   } catch (err) {
     showSaveMsg(err.message || 'Falha ao salvar o canal.', false);
   } finally {
@@ -663,9 +706,11 @@ async function getPlaybackToken(channelId) {
 
   if (cached && Date.now() < cached.expiresAt) return cached.token;
 
+  await ensureApiToken();
   const res = await fetch(`/api/channels/${encodeURIComponent(channelId)}/playback`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiToken}` },
+    headers: authHeaders(),
+    credentials: 'same-origin',
   });
 
   const json = await res.json();

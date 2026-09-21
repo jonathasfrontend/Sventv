@@ -12,8 +12,22 @@
  * validado em REV 1/2).
  */
 
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+
+const alertService = require('../src/services/alertService');
+
+// Alertas de eventos de usuário passam a existir (role_escalation etc.):
+// instalando sinks de captura nas rotas, NENHUM alerta de teste sai para o
+// webhook/e-mail REAL configurado no .env.
+before(() => {
+  alertService.resetCooldown();
+  alertService._setSinks({ sendEmail: async () => true, sendWebhook: async () => true });
+});
+after(() => {
+  alertService._setSinks(null);
+  alertService.resetCooldown();
+});
 
 // Teste de ISOLAMENTO: o ChannelHealthService faz auto-start de checagens ao
 // ser construído com um m3uService (91 probes paralelos em runtime). Em teste

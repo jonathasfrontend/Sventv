@@ -771,37 +771,60 @@
 
 .pcard-reco .pcard-name { color: var(--primary); }
 
-/* ?"?Painel "Salvar na playlist" ?"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"??"? */
+/* ── Popover "Salvar na playlist" (dropdown sob o botão) ─────── */
+
+.save-drop {
+  position: relative;
+}
 
 .save-panel {
-  margin-top: 12px;
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  width: 250px;
   padding: 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  animation: fadeUp 0.15s ease;
 }
 
-.save-panel-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.save-panel::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 20px;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+.save-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
   margin-bottom: 10px;
 }
 
-.save-panel-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.save-panel .form-input {
+  width: 100%;
 }
 
-.save-panel-new {
-  display: flex;
-  gap: 8px;
+.save-panel-cta {
+  margin-top: 10px;
+  width: 100%;
 }
 
-.save-panel-new .form-input { flex: 1; }
+.save-panel-msg {
+  font-size: 12px;
+  margin-top: 8px;
+}
 
-.save-panel-msg { font-size: 12px; }
 .save-panel-msg--ok   { color: hsl(142, 70%, 45%); }
 .save-panel-msg--err  { color: hsl(0, 70%, 55%); }
 

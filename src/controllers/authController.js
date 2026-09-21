@@ -164,6 +164,10 @@ const authController = {
     try {
       const result = await authService.getProfile(req.user._id);
 
+      // NUNCA cachear: um token antigo servido de cache do navegador (304)
+      // faz as chamadas seguintes falharem com 401 e entram em loop de login.
+      res.setHeader('Cache-Control', 'no-store');
+
       return res.status(200).json({
         success: true,
         message: 'API token recuperado com sucesso.',

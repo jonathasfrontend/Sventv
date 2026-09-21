@@ -208,10 +208,14 @@ const reminderService = {
     return reminder;
   },
 
-  async listReminders(userId, { limit, upcoming = true } = {}) {
+  async listReminders(userId, { limit, upcoming = true, trailMs = 0 } = {}) {
     if (!this.isEnabled()) return [];
     if (!userId) return [];
-    const rows = await repository.listByUser(userId, { limit, upcoming: upcoming !== false });
+    const rows = await repository.listByUser(userId, {
+      limit,
+      upcoming: upcoming !== false,
+      trailMs: Math.max(0, Number(trailMs) || 0),
+    });
     return rows;
   },
 

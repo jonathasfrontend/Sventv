@@ -233,6 +233,16 @@ test('listReminders: desabilitado devolve [] e não consulta o banco', async () 
   }
 });
 
+test('listReminders: repassa trailMs ao repositório (janela de recuperação)', async () => {
+  let captured = null;
+  restubRepo({ listByUser: async (userId, opts) => { captured = opts; return []; } });
+  const out = await reminderService.listReminders('u1', { limit: 20, upcoming: true, trailMs: 900000 });
+  assert.deepEqual(out, []);
+  assert.equal(captured.limit, 20);
+  assert.equal(captured.upcoming, true);
+  assert.equal(captured.trailMs, 900000, 'trail flui até a query do banco');
+});
+
 // ── Ownership (IDOR) ───────────────────────────────────────────
 
 test('deleteReminder: lembrete de OUTRO usuário nunca é alcançável → 404 (IDOR)', async () => {

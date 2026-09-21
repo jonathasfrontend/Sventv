@@ -1,11 +1,24 @@
 'use strict';
 
-const { test, mock } = require('node:test');
+const { test, mock, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 const User = require('../src/models/User');
 const metrics = require('../src/utils/metrics');
 const bcrypt = require('bcryptjs');
+const alertService = require('../src/services/alertService');
+
+// O serviço agora dispara alertService.notify em tentativas excedidas e em falha
+// de SMTP — sinks de captura garantem que NENHUM alerta de teste sai para o
+// webhook/e-mail REAL configurado no .env.
+before(() => {
+  alertService.resetCooldown();
+  alertService._setSinks({ sendEmail: async () => true, sendWebhook: async () => true });
+});
+after(() => {
+  alertService._setSinks(null);
+  alertService.resetCooldown();
+});
 
 const passwordResetCodeRepository = require('../src/repositories/passwordResetCodeRepository');
 const emailService = require('../src/services/emailService');

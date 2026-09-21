@@ -42,15 +42,21 @@ const reminderController = {
   },
 
   /**
-   * GET /api/user/reminders?limit=&upcoming=
+   * GET /api/user/reminders?limit=&upcoming=&trail=
    * Lista os lembretes do usuário (padrão: apenas os ainda não começados).
+   * `trail` (ms, clamp 0..30min) amplia a janela para até `trail` DEPOIS do
+   * início — o dispatcher "Avise-me" do navegador usa para re-disparar uma
+   * notificação perdida enquanto a aba estava em segundo plano/reaberta.
    */
   async list(req, res, next) {
     try {
       const upcoming = req.query.upcoming === '0' || req.query.upcoming === 'false' ? false : true;
+      const trailRaw = parseInt(req.query.trail, 10);
+      const trailMs = Number.isNaN(trailRaw) ? 0 : Math.min(Math.max(trailRaw, 0), 30 * 60 * 1000);
       const reminders = await reminderService.listReminders(req.user.id, {
         limit: req.query.limit,
         upcoming,
+        trailMs,
       });
       return res.status(200).json({
         success: true,

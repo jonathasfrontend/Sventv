@@ -43,6 +43,7 @@ router.get('/epg/unmatched', adminController.getEpgUnmatched);
 
 router.get('/metrics', adminController.getMetrics);
 router.get('/metrics/analytics', adminController.getAnalyticsMetrics);
+router.get('/metrics/users', adminController.getUserMetrics);
 router.get('/metrics/history', adminController.getHistoricMetricsSeries);
 router.post('/metrics/aggregate', adminController.runAggregation);
 router.get('/audit-logs', adminController.getAuditLogs);

@@ -23,6 +23,7 @@
 const rateLimit = require('express-rate-limit');
 const config = require('../config/app');
 const logger = require('../utils/logger');
+const alertService = require('../services/alertService');
 const { getUserPlanLimit } = require('../services/rateLimitService');
 const redisStore = require('../services/redisStore');
 const { inc } = require('../utils/metrics');
@@ -168,6 +169,21 @@ const limitHandler = (req, res, _next, options = {}) => {
   });
 };
 
+/**
+ * Handler específico do registro: além do 429 padrão, dispara alerta admin
+ * quando o limite de CRIACAO DE CONTAS é estourado (possível spam/abuso).
+ * `eventKey` GENÉRICA (não por usuário) — aqui não há conta por request; o
+ * cooldown normal do alertService colapsa rajadas. O IP vai apenas no alerta
+ * (canal privado do admin), nunca na resposta pública 429.
+ */
+function registerLimitHandler(req, res, next, options) {
+  alertService.notify('auth.register_rate_limited', {
+    event: 'auth.register_rate_limited',
+    ip: req.ip || 'unknown',
+  });
+  return limitHandler(req, res, next, options);
+}
+
 // ─────────────────────────────────────────────────────────────
 // Limitadores
 // ─────────────────────────────────────────────────────────────
@@ -181,9 +197,14 @@ const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: hybridStore('global'),
-  handler: limitHandler,
   keyGenerator: (req) => `global_${req.ip}`,
-  skip: (req) => isProxyPath(req),
+  // Proxy de stream tem limitador dedicado, assets estáticos não devem
+  // consumir cota global (seriam contados antes do express.static em app.js)
+  // e o bootstrap de credencial do painel web (/api/auth/api-token) é
+  // sub-recurso obrigatório das páginas — bloqueá-lo por um bucket anônimo
+  // de IP transforma qualquer cota esgotada em 401 no /api/channels e no
+  // loop /dashboard↔/login que estoura o rate limit (ver relatórios 09-19).
+  skip: (req) => isGlobalExempt(req),
   validate: false,
 });
 
@@ -213,7 +234,7 @@ const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: hybridStore('register'),
-  handler: limitHandler,
+  handler: registerLimitHandler,
   keyGenerator: (req) => `register_${req.ip}`,
   validate: false,
 });
@@ -327,6 +348,49 @@ function isProxyPath(req) {
 }
 
 /**
+ * Assets estáticos servidos por `express.static` (app.js monta o globalLimiter
+ * ANTES do static — ver montagem de app.js). Quando um navegador carrega
+ * /login ou /dashboard ele dispara dezenas de GETs de /js/*, /css/*, /img/*,
+ * /favicon.ico e /Player/* ao mesmo tempo. Sem esta exclusão, todos consomem
+ * a cota GLOBAL por IP em rajada — um spike legítimo de página (que até
+ * carrega 60+ assets) estoura o bucket global e derruba tudo em 429,
+ * incluindo a própria página HTML seguinte (amplificando qualquer loop de
+ * reload a um soft-lock por IP).
+ */
+function isStaticAssetPath(req) {
+  const pathname = (req.path || req.originalUrl || '').split('?')[0];
+  return (
+    /^\/(js|css|img)\//.test(pathname) ||
+    /^\/Player\//.test(pathname) ||
+    pathname === '/favicon.ico' ||
+    /\.(js|css|png|jpe?g|gif|svg|webp|ico|woff2?|map|webmanifest)$/i.test(pathname)
+  );
+}
+
+/**
+ * Endpoint de bootstrap de credencial do painel web: GET /api/auth/api-token
+ * (session-gated). É chamado por dashboard/guia/playlists a cada carga de
+ * página para obter o API token sob demanda. Só a forma exata (método GET
+ * + caminho) é isenta do bucket GLOBAL — login/register/perfil continuam
+ * cobertos. Sem esta isenção, um esgotamento transitório do bucket global
+ * (mesmo de outro usuário no edge, ver trust proxy) quebra o token do painel
+ * → 401 em /api/channels → redireciona a /login → loop + mais 429.
+ */
+function isAuthTokenPath(req) {
+  const pathname = (req.path || req.originalUrl || '').split('?')[0];
+  return (req.method || '').toUpperCase() === 'GET' && pathname === '/api/auth/api-token';
+}
+
+/**
+ * Isenções combinadas do bucket GLOBAL (usado pelo globalLimiter e testado
+ * em tests/loop-regression.test.js): proxy HLS, assets estáticos e bootstrap
+ * de credencial do painel.
+ */
+function isGlobalExempt(req) {
+  return isProxyPath(req) || isStaticAssetPath(req) || isAuthTokenPath(req);
+}
+
+/**
  * Handler dos limitadores de recuperação de senha — barra flood no padrão
  * do projeto (429 JSON) e registra métrica própria.
  */
@@ -399,4 +463,11 @@ module.exports = {
   resetPasswordLimiter,
   adminWriteLimiter,
   RedisRateLimitStore,
+  // Helpers de isenção exportados para testes de regressão do loop
+  // (docs/RELATORIO-CORRECAO-LOOP-DASHBOARD-*): não devem regredir senão
+  // o painel volta a estourar o bucket global.
+  isProxyPath,
+  isStaticAssetPath,
+  isAuthTokenPath,
+  isGlobalExempt,
 };

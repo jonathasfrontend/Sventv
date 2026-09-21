@@ -14,9 +14,37 @@ const __SSR__ = (() => {
   } catch (_) { return {}; }
 })();
 
-const apiToken = __SSR__.apiToken || localStorage.getItem('apiToken');
-if (!apiToken) {
-  window.location.href = '/login';
+// Token para chamadas de API (EPG/canais exigem API token). A sessão web
+// vive no cookie httpOnly; quando não há token local, buscamos sob demanda
+// em GET /api/auth/api-token. NUNCA redirecionar para /login apenas por
+// falta de token: com sessão válida o /login devolve para cá e vira loop.
+let apiToken = __SSR__.apiToken || localStorage.getItem('apiToken') || '';
+let _apiTokenPromise = null;
+
+function authHeaders() {
+  return apiToken ? { Authorization: `Bearer ${apiToken}` } : {};
+}
+
+async function ensureApiToken() {
+  if (apiToken) return apiToken;
+  if (!_apiTokenPromise) {
+    _apiTokenPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/api-token', { credentials: 'same-origin', cache: 'no-store' });
+        if (res.status === 401) {
+          window.location.href = '/login?returnTo=/guia';
+          return '';
+        }
+        const json = await res.json();
+        apiToken = (json && json.data && json.data.apiToken) || '';
+        if (apiToken) {
+          try { localStorage.setItem('apiToken', apiToken); } catch (_) { /* best-effort */ }
+        }
+      } catch (_) { /* rede indisponível — a chamada seguinte decide */ }
+      return apiToken;
+    })().finally(() => { _apiTokenPromise = null; });
+  }
+  return _apiTokenPromise;
 }
 
 // Lógica pura de busca (UMD — carregado como <script> antes deste arquivo).
@@ -28,10 +56,11 @@ const HOUR_MS = 60 * 60 * 1000;
 const WINDOW_PAST_H = 2;      // horas para trás
 const WINDOW_AHEAD_H = 25;    // horas adiante (janela total ≈ 27h)
 const REALTIME_POLL_MS = 60000;
-const REALTIME_REMINDERS_MS = 45000;
 const NOW_TICK_MS = 30000;
-// Janela de disparo do lembrete: pode notificar até 30s ANTES do início e
-// até 10min DEPOIS (recupera lembretes cujo horário caiu com a página fechada).
+// Janela de disparo do lembrete: o dispatcher compartilhado
+// (public/js/reminder-notifier.js) pode notificar até 30s ANTES do início e
+// até 10min DEPOIS (recupera lembretes cujo horário caiu com a aba de fundo
+// throttled ou a página fechada/reaberta).
 const REMINDER_NOTIFY_LEAD_MS = 30 * 1000;
 const REMINDER_NOTIFY_TRAIL_MS = 10 * 60 * 1000;
 
@@ -51,7 +80,6 @@ const state = {
   remindersEnabled: Boolean(__SSR__.remindersEnabled),
   reminders: [],             // lembretes carregados do /api/user/reminders
   reminderIndex: new Map(),  // `${channelId}|${startsAt}` → { id, notifiedAt }
-  reminderNotified: false,
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
@@ -101,10 +129,12 @@ const retryBtn = document.getElementById('guiaRetryBtn');
 
 // ── API fetch ─────────────────────────────────────────────────
 async function apiFetch(endpoint) {
-  const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${apiToken}` } });
+  await ensureApiToken();
+  const res = await fetch(endpoint, { headers: authHeaders(), credentials: 'same-origin' });
   if (res.status === 401) {
     localStorage.removeItem('apiToken');
-    window.location.href = '/login';
+    apiToken = '';
+    window.location.href = '/login?returnTo=/guia';
     return null;
   }
   if (!res.ok) throw new Error(`Erro ${res.status}`);
@@ -522,7 +552,8 @@ async function toggleReminder() {
   if (existing) {
     const res = await fetch(`/api/user/reminders/${encodeURIComponent(existing.id)}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${apiToken}` },
+      headers: authHeaders(),
+      credentials: 'same-origin',
     });
     if (res.ok) {
       state.reminderIndex.delete(key);
@@ -554,7 +585,8 @@ async function toggleReminder() {
   };
   const res = await fetch('/api/user/reminders', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'same-origin',
     body: JSON.stringify(payload),
   });
   const json = await res.json().catch(() => ({}));
@@ -569,37 +601,11 @@ async function toggleReminder() {
   updateDetailReminder();
 }
 
-// Dispara as notificações pendentes (janela: 30s antes → 10min depois do
-// início) e confirma via two-phase para não re-notificar no próximo poll.
-async function pollReminders() {
-  await loadReminders();
-  if (notificationState() !== 'granted') return;
-  const now = Date.now();
-  for (const r of state.reminders) {
-    if (r.notifiedAt) continue;
-    const start = new Date(r.startsAt).getTime();
-    if (!Number.isFinite(start)) continue;
-    if (start < now - REMINDER_NOTIFY_TRAIL_MS || start > now + REMINDER_NOTIFY_LEAD_MS) continue;
-    try {
-      const n = new Notification(`Está na hora: ${r.title}`, {
-        body: 'Este programa está começando agora no SvenTV.',
-        tag: `sventv-reminder-${r.id}`,
-        icon: '/favicon.svg',
-      });
-      n.onclick = () => { window.focus(); window.location.href = '/guia'; };
-    } catch (_) { /* ambiente sem suporte a Notification */ continue; }
-    try {
-      const res = await fetch(`/api/user/reminders/${encodeURIComponent(r.id)}/notified`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiToken}` },
-      });
-      if (res.ok) {
-        r.notifiedAt = new Date().toISOString();
-        state.reminderIndex.set(reminderKey(r.channelId, r.startsAt), r);
-      }
-    } catch (_) { /* tenta no próximo poll */ }
-  }
-}
+// O DISPATCHER de notificações NÃO mora mais aqui. public/js/reminder-notifier.js
+// (carregado antes deste arquivo) faz o poll de /api/user/reminders em TODA a
+// página autenticada — e, ao contrário do helper Realtime, NÃO pausa em aba
+// oculta: notifica mesmo quando o usuário está em outra aba do navegador
+// (janela lead/trail + catch-up em visibilitychange/focus + lease cross-aba).
 
 // ── Scroll até o "agora" / uma hora ───────────────────────────
 function scrollToHour(tsMs) {
@@ -695,9 +701,11 @@ async function getPlaybackToken(channelId) {
   const cached = _pbCache.get(channelId);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
 
+  await ensureApiToken();
   const res = await fetch(`/api/channels/${encodeURIComponent(channelId)}/playback`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiToken}` },
+    headers: authHeaders(),
+    credentials: 'same-origin',
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.data?.playbackToken) {
@@ -868,14 +876,19 @@ async function init() {
     setInterval(() => { loadGrid().catch(() => {}); }, REALTIME_POLL_MS);
   }
 
-  // Avise-me: carrega os lembretes e, quando a aba está aberta, vence as
-  // notificações pendentes (janela curta) — pausado em aba oculta.
+  // Avise-me: carrega o estado dos lembretes (modal de detalhes) e entrega o
+  // DISPARO das notificações ao dispatcher compartilhado — que NÃO pausa em
+  // aba oculta (notifica mesmo em outra aba) e usa a mesma janela lead/trail.
   if (state.remindersEnabled) {
     loadReminders();
-    if (window.Realtime) {
-      Realtime.poll({ name: 'reminders', fn: pollReminders, interval: REALTIME_REMINDERS_MS });
-    } else {
-      setInterval(() => { pollReminders().catch(() => {}); }, REALTIME_REMINDERS_MS);
+    if (window.ReminderNotifier && window.ReminderNotifier.start) {
+      ReminderNotifier.start({
+        headers: apiToken ? { Authorization: `Bearer ${apiToken}` } : null,
+        credentials: 'include',
+        clickUrl: '/guia',
+        leadMs: REMINDER_NOTIFY_LEAD_MS,
+        trailMs: REMINDER_NOTIFY_TRAIL_MS,
+      });
     }
   }
 }

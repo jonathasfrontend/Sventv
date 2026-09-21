@@ -30,6 +30,16 @@ const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = requir
 
 const app = express();
 
+// ── Confiança no proxy (Vercel) ───────────────────────────────
+// Na Vercel a função recebe as requisições atrás do edge/CDN. Sem
+// `trust proxy`, `req.ip` resolve para o IP interno do edge — TODOS os
+// usuários de uma região compartilhariam a MESMA chave do rate limit
+// global/login/register/reset (bucket único de 200/min no site inteiro),
+// esgotando a cota sob uso normal e invariando em 429 até o
+// /api/auth/api-token → 401 no /api/channels → loop de /login. Trusting
+// 1 hop é seguro: a Vercel reescreve `x-forwarded-for` no edge.
+app.set('trust proxy', 1);
+
 // ── Request ID (primeiro: disponível a todos os demais) ─────
 
 app.use(requestId);

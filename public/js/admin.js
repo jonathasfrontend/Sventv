@@ -590,7 +590,6 @@ function renderUsers() {
         </div>
         <div class="user-card-actions">
           <button type="button" class="btn btn-ghost btn-sm" data-manage-user="${escapeHtml(user.id)}">Gerenciar</button>
-          ${self ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-quick-block="${escapeHtml(user.id)}">${user.accountRestricted ? 'Desbloquear' : 'Bloquear'}</button>`}
         </div>
       </article>`;
   }).join('');
@@ -603,16 +602,6 @@ function bindUserCardEvents() {
   });
   usersGrid.querySelectorAll('[data-manage-user]').forEach(btn => {
     btn.addEventListener('click', () => openUserModal(btn.dataset.manageUser).catch(err => showAlert(err.message)));
-  });
-  usersGrid.querySelectorAll('[data-quick-block]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      openUserModal(btn.dataset.quickBlock)
-        .then(() => {
-          const box = document.getElementById('userBlockConfirm');
-          if (box) box.hidden = false;
-        })
-        .catch(err => showAlert(err.message));
-    });
   });
 }
 
@@ -1033,6 +1022,99 @@ async function loadAnalytics(silent) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  MÉTRICAS DE USUÁRIOS (agregados administrativos)
+// ════════════════════════════════════════════════════════════
+
+const userMetricsPeriod      = document.getElementById('userMetricsPeriod');
+const loadUserMetricsBtn     = document.getElementById('loadUserMetricsBtn');
+const userMetricsLoading     = document.getElementById('userMetricsLoading');
+const userMetricsBody        = document.getElementById('userMetricsBody');
+const userMetricsKpis        = document.getElementById('userMetricsKpis');
+const userMetricsSeries      = document.getElementById('userMetricsSeries');
+const userMetricsSeriesEmpty = document.getElementById('userMetricsSeriesEmpty');
+const userMetricsSecurity    = document.getElementById('userMetricsSecurity');
+const userMetricsTerms       = document.getElementById('userMetricsTerms');
+
+const SECURITY_EVENT_LABELS = {
+  'auth.account_locked': 'Bloqueios de conta',
+  'auth.password_reset_attempts_exceeded': 'Reset excedido (senha)',
+  'admin.user_block': 'Bloqueios por admin',
+  'admin.user_unblock': 'Desbloqueios por admin',
+  'admin.change_user_role': 'Mudanças de papel',
+};
+
+function userMetricsPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value); // 'novo'
+  return `${n > 0 ? '+' : ''}${n.toLocaleString('pt-BR')}%`;
+}
+
+function renderUserMetrics(data) {
+  const totals = data.totals || {};
+  const growth = data.growth || {};
+  const eng = data.engagement || {};
+
+  const kpis = [
+    ['Novos no período', growth.current ?? '—', growth.growthPct === 'novo' ? 'novo' : userMetricsPct(growth.growthPct)],
+    ['Usuários totais', totals.all ?? '—', `${totals.active ?? 0} ativos`],
+    ['Bloqueados', totals.blocked ?? '—', ''],
+    ['Administradores', totals.admins ?? '—', ''],
+    ['Ativos no período', eng.activeInPeriod ?? '—', `${eng.createdInPeriod ?? 0} criados`],
+    ['Taxa de ativação', eng.activationRate != null ? `${eng.activationRate}%` : '—', ''],
+  ];
+  userMetricsKpis.innerHTML = kpis.map(([label, value, sub]) => `
+    <div class="admin-kpi-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+      ${sub ? `<small class="admin-kpi-sub">${escapeHtml(sub)}</small>` : ''}
+    </div>`).join('');
+
+  const series = Array.isArray(data.series) ? data.series : [];
+  const max = series.reduce((acc, d) => Math.max(acc, Number(d.count) || 0), 0);
+  userMetricsSeriesEmpty.hidden = series.length > 0;
+  userMetricsSeries.innerHTML = series
+    .map((d) => {
+      const count = Number(d.count) || 0;
+      const h = max > 0 ? Math.max(4, Math.round((count / max) * 100)) : 4;
+      return `<div class="um-bar" style="height:${h}%" title="${escapeHtml(d.date)}: ${escapeHtml(String(count))}"></div>`;
+    })
+    .join('');
+
+  const security = Array.isArray(data.security) ? data.security : [];
+  userMetricsSecurity.innerHTML = security.length
+    ? security
+        .map((s) => analyticsListRow(SECURITY_EVENT_LABELS[s.action] || s.action, String(s.count)))
+        .join('')
+    : '<p class="admin-analytics-empty">Sem dados no período.</p>';
+
+  const terms = data.terms || {};
+  const breakdown = Array.isArray(terms.breakdown) ? terms.breakdown : [];
+  userMetricsTerms.innerHTML = breakdown.length
+    ? breakdown
+        .map((t) => analyticsListRow(t.version || '—', String(t.count)))
+        .join('') + analyticsListRow('Sem versão registrada', String(terms.withoutTerms ?? 0))
+    : '<p class="admin-analytics-empty">Nenhuma aceitação registrada.</p>';
+}
+
+async function loadUserMetrics(silent) {
+  if (!userMetricsBody) return;
+  if (!silent) {
+    userMetricsLoading.hidden = false;
+    userMetricsBody.hidden = true;
+  }
+  try {
+    const period = userMetricsPeriod?.value || 'week';
+    const json = await apiGet(`/api/admin/metrics/users?period=${encodeURIComponent(period)}`);
+    renderUserMetrics(json.data);
+    userMetricsBody.hidden = false;
+  } catch (err) {
+    showAlert('Falha ao carregar métricas de usuários: ' + err.message);
+  } finally {
+    userMetricsLoading.hidden = true;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 //  AUDIT LOGS
 // ════════════════════════════════════════════════════════════
 
@@ -1113,12 +1195,14 @@ function activateTab(name) {
   // Atualiza a seção recém-aberta (metadados podem ter mudado)
   if (name === 'metrics') {
     loadMetrics().catch(() => {});
-    loadAudit().catch(() => {});
     loadAnalytics().catch(() => {});
+    loadUserMetrics().catch(() => {});
   } else if (name === 'channels') {
     loadChannels().catch(() => {});
   } else if (name === 'users') {
     loadUsers().catch(() => {});
+  } else if (name === 'audit') {
+    loadAudit().catch(() => {});
   }
 }
 
@@ -1138,6 +1222,7 @@ async function refreshAll() {
     Promise.resolve(loadMetrics()).catch(() => {}),
     Promise.resolve(loadAudit()).catch(err => showAlert('Falha ao carregar auditoria: ' + err.message)),
     Promise.resolve(loadAnalytics()).catch(err => showAlert('Falha ao carregar analytics: ' + err.message)),
+    Promise.resolve(loadUserMetrics()).catch(err => showAlert('Falha ao carregar métricas de usuários: ' + err.message)),
   ]);
 }
 
@@ -1163,10 +1248,12 @@ bindLoadButton(checkAllChannelsBtn, () => checkAllChannels().catch(err => showAl
 bindLoadButton(reloadChannelsBtn, () => reloadM3U().catch(err => showAlert(err.message)));
 bindLoadButton(refreshMetricsBtn, () => loadMetrics().catch(err => showAlert(err.message)));
 bindLoadButton(loadAnalyticsBtn, () => loadAnalytics().catch(err => showAlert(err.message)));
+bindLoadButton(loadUserMetricsBtn, () => loadUserMetrics().catch(err => showAlert(err.message)));
 bindLoadButton(loadAuditBtn, () => loadAudit().catch(err => showAlert(err.message)));
 bindDownloadButton(document.getElementById('exportAnalyticsBtn'), exportAnalyticsCsv);
 bindDownloadButton(document.getElementById('exportAuditBtn'), exportAuditCsv);
 analyticsPeriod?.addEventListener('change', () => loadAnalytics().catch(err => showAlert(err.message)));
+userMetricsPeriod?.addEventListener('change', () => loadUserMetrics().catch(err => showAlert(err.message)));
 auditActionFilter?.addEventListener('change', () => loadAudit().catch(err => showAlert(err.message)));
 
 chSelectAll?.addEventListener('change', e => {
@@ -1224,8 +1311,9 @@ bindLoadButton(refreshLiveBtn, () => loadMetrics().catch(err => showAlert(err.me
 
 // ── Realtime ───────────────────────────────────────────────
 // Atualiza painéis leves (métricas, auditoria, canais) a cada 30s.
-// Analytics só é atualizado no modo "hoje" para não pesar o backend;
-// a aba 'channel_table' só é recarregada quando está aberta.
+// Analytics só é atualizado no modo "hoje" para não pesar o backend.
+// Abas com dados próprios (canais, usuários, auditoria) só são
+// recarregadas quando estão abertas.
 function activeTabName() {
   const active = tabButtons.find((btn) => btn.classList.contains('admin-tab--active'));
   return active ? active.dataset.tab : '';
@@ -1238,11 +1326,17 @@ function startRealtimeAdmin() {
     fn: async () => {
       const tab = activeTabName();
       await loadMetrics().catch(() => {});
-      await loadAudit().catch(() => {});
       if (tab === 'channels') await loadChannels().catch(() => {});
       if (tab === 'users') await loadUsers().catch(() => {});
+      if (tab === 'audit') await loadAudit().catch(() => {});
       if (tab === 'metrics' && (analyticsPeriod?.value || 'today') === 'today') {
         await loadAnalytics(true).catch(() => {});
+      }
+      // Métricas de usuários também só no polling da janela mais barata
+      // (semana), espelhando a política do analytics — períodos longos são
+      // carregados manualmente / na troca do seletor.
+      if (tab === 'metrics' && (userMetricsPeriod?.value || 'week') === 'week') {
+        await loadUserMetrics(true).catch(() => {});
       }
     },
     interval: 30000,

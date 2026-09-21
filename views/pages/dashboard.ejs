@@ -184,7 +184,16 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="copyUrlBtn"><i class="ph ph-copy"></i> Copiar Embed</button>
-        <button class="btn btn-ghost btn-sm" id="saveToPlaylistBtn" title="Salvar na playlist"><i class="ph ph-list-plus"></i> Salvar</button>
+        <div class="save-drop" id="saveDrop">
+          <button class="btn btn-ghost btn-sm" id="saveToPlaylistBtn" title="Salvar na playlist"><i class="ph ph-list-plus"></i> Salvar</button>
+          <!-- Popover: salvar na playlist (só seleção) -->
+          <div class="save-panel" id="savePanel" hidden>
+            <div class="save-panel-title">Salvar em uma playlist</div>
+            <select id="savePlaylistSelect" class="form-input" aria-label="Escolher playlist"></select>
+            <div class="save-panel-msg" id="savePanelMsg" hidden></div>
+            <button class="btn btn-primary btn-sm save-panel-cta" id="saveChannelBtn">Salvar</button>
+          </div>
+        </div>
         <button class="modal-close" id="modalClose" aria-label="Fechar"><i class="ph ph-x"></i></button>
       </div>
     </div>
@@ -204,20 +213,6 @@
         <span><i class="ph ph-warning" aria-hidden="true"></i></span>
         <p>Canal não disponível ou ID inválido.</p>
         <button class="btn btn-ghost btn-sm" id="retryBtn">Tentar novamente</button>
-      </div>
-    </div>
-    <!-- Painel: salvar na playlist -->
-    <div class="save-panel" id="savePanel" hidden>
-      <div class="save-panel-header">
-        <strong>Salvar em uma playlist</strong>
-        <div class="save-panel-msg" id="savePanelMsg" hidden></div>
-      </div>
-      <div class="save-panel-body">
-        <select id="savePlaylistSelect" class="form-input"></select>
-        <div class="save-panel-new">
-          <input id="saveNewPlaylistName" class="form-input" placeholder="Ou crie uma playlist nova..." maxlength="80">
-          <button class="btn btn-primary btn-sm" id="saveChannelBtn">Salvar</button>
-        </div>
       </div>
     </div>
   </div>

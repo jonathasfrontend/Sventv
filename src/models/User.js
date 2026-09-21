@@ -13,6 +13,8 @@ const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const { Prisma } = require('@prisma/client');
 const config = require('../config/app');
+const alertService = require('../services/alertService');
+const { audit } = require('../services/auditService');
 const { userRepository, normalizeEmail } = require('../repositories/userRepository');
 
 const VALID_STATUS = new Set(['active', 'inactive', 'banned', 'pending']);
@@ -150,14 +152,40 @@ class User {
 
     const nextAttempts = (this.loginAttempts || 0) + 1;
     const updates = { loginAttempts: nextAttempts };
+    let justLocked = false;
 
     if (nextAttempts >= maxAttempts && !this.isLocked) {
       updates.lockUntil = new Date(Date.now() + lockMinutes * 60 * 1000);
+      justLocked = true;
     }
 
     try {
       const updated = await userRepository.updateById(this._id, updates);
       Object.assign(this, mapRowToModel(updated, true));
+      if (justLocked && updated && updated.lockUntil) {
+        // Trilha de auditoria (fire-and-forget, fail-open) — grava o bloqueio
+        // automático para as métricas de segurança do admin. Sem req: a
+        // origem é o login propriamente (ip/ua ficam no audit do PUT de falha).
+        audit({
+          action: 'auth.account_locked',
+          userId: this._id,
+          email: this.email,
+          meta: {
+            lockUntil: new Date(updated.lockUntil).toISOString(),
+            attempts: nextAttempts,
+          },
+        });
+        // Alerta administrativo (fire-and-forget) — só depois do lock realmente
+        // gravado. Chave por usuário: debounce não engole contas distintas.
+        // NUNCA incluir senha/hash/token (regra do alertService).
+        alertService.notify('auth.account_locked:' + this._id, {
+          event: 'auth.account_locked',
+          userId: this._id,
+          email: this.email,
+          lockUntil: new Date(updated.lockUntil).toISOString(),
+          attempts: nextAttempts,
+        });
+      }
     } catch (error) {
       handleDbError(error);
     }

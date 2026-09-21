@@ -159,6 +159,11 @@ const passwordResetService = {
         metrics.inc('passwordResetAttemptsExceeded');
         await passwordResetCodeRepository.invalidate(active.id);
         await auditService.audit({ action: 'PASSWORD_RESET_ATTEMPTS_EXCEEDED', req, userId: user.id, email: user.email });
+        alertService.notify('auth.password_reset_attempts_exceeded:' + user.id, {
+          event: 'auth.password_reset_attempts_exceeded',
+          userId: user.id,
+          email: user.email,
+        });
       } else {
         metrics.inc('passwordResetFailed');
         await auditService.audit({ action: 'PASSWORD_RESET_CODE_INVALID', req, userId: user.id, email: user.email, meta: { attempts: after.attempts } });
@@ -172,6 +177,11 @@ const passwordResetService = {
       metrics.inc('passwordResetAttemptsExceeded');
       await passwordResetCodeRepository.invalidate(active.id);
       await auditService.audit({ action: 'PASSWORD_RESET_ATTEMPTS_EXCEEDED', req, userId: user.id, email: user.email });
+      alertService.notify('auth.password_reset_attempts_exceeded:' + user.id, {
+        event: 'auth.password_reset_attempts_exceeded',
+        userId: user.id,
+        email: user.email,
+      });
       throw new PasswordResetError('INVALID_CREDENTIALS', 'Código inválido ou expirado.');
     }
 

@@ -742,6 +742,14 @@
     const activeStarts = new Map();  // startMs → true (servidor confirmou existência)
     const pendingStarts = new Set(); // startMs → consulta de status em andamento
 
+    // Dispatcher "Avise-me" (public/js/reminder-notifier.js): a notificação
+    // do navegador é disparada por ele mesmo — ao contrário do Realtime, ele
+    // NÃO pausa em aba oculta, então avisa mesmo com o usuário em outra aba.
+    const NOTIFIER_INTERVAL_MS = 30 * 1000;
+    const NOTIFIER_LEAD_MS = 60 * 1000;      // até 60s antes do início
+    const NOTIFIER_TRAIL_MS = 15 * 60 * 1000; // recupera até 15min após
+    let notifierActive = false;
+
     function cacheElements() {
       slot = document.getElementById('reminderSlot');
       if (!slot) return;
@@ -834,6 +842,12 @@
       const start = ReminderBarCore.toEpochMs(next.start);
       if (isActive(start)) return;
 
+      // Notificação do navegador exige permissão — o clique do botão é o
+      // gesto do usuário; pedimos aqui quando ainda está em 'default'.
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => { /* user cancelou */ });
+      }
+
       busy = true;
       btn.disabled = true;
       setMessage('');
@@ -849,7 +863,10 @@
             // 201 criado; 409 = já existe lembrete para canal+início → idem sucesso.
             subStart = start;
             activeStarts.set(start, true);
-            setMessage('Lembrete ativado');
+            const granted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+            setMessage(granted
+              ? 'Lembrete ativado'
+              : 'Lembrete ativado. Permita as notificações do navegador para receber o aviso.');
             update(lastView || null); // esconde o botão para ESTE programa
             return;
           }
@@ -872,6 +889,20 @@
       if (!canRemind) return; // kill switch da feature → nada é renderizado
       cacheElements();
       if (!btn) return;
+      // Dispatcher do navegador: avisa no horário do programa mesmo com o
+      // usuário em outra aba (não pausa em aba oculta). Reusa a auth do
+      // botão — API token (Bearer) ou cookie httpOnly da sessão.
+      if (typeof ReminderNotifier !== 'undefined' && ReminderNotifier.start) {
+        ReminderNotifier.start({
+          headers: reminderAuth === 'api' ? () => authHeaders(false) : null,
+          credentials: 'include',
+          clickUrl: '/guia',
+          intervalMs: NOTIFIER_INTERVAL_MS,
+          leadMs: NOTIFIER_LEAD_MS,
+          trailMs: NOTIFIER_TRAIL_MS,
+        });
+        notifierActive = true;
+      }
       btn.addEventListener('click', onRemind);
     }
 
@@ -880,6 +911,10 @@
         btn.removeEventListener('click', onRemind);
         if (btn.parentNode) btn.parentNode.removeChild(btn);
       }
+      if (notifierActive && typeof ReminderNotifier !== 'undefined' && ReminderNotifier.stop) {
+        ReminderNotifier.stop();
+      }
+      notifierActive = false;
       if (slot) slot.innerHTML = '';
       slot = null;
       btn = null;

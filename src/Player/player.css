@@ -81,8 +81,17 @@ body {
 }
 
 .player .player_info .player_content{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--color-white);
   font-size: 0.875rem;
+}
+.player .player_info .player_content .player__logo-img{
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .player__channel-name {

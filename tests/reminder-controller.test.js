@@ -91,6 +91,27 @@ test('list: 200 com array serializado', async () => {
   assert.equal(res.sent.data[0].title, 'Jornal Hoje');
 });
 
+test('list: repassa ?trail= (ms, clamp 0..30min) ao serviço', async () => {
+  const seen = [];
+  serviceImpl = { listReminders: async (userId, opts) => { seen.push(opts); return [REMINDER]; } };
+  const req = { user: { id: 'u-1' }, query: { trail: '900000' } };
+  const res = makeRes();
+  await reminderController.list(req, res, () => {});
+  assert.equal(res.statusCode, 200);
+  assert.equal(seen[0].trailMs, 900000);
+});
+
+test('list: trail ausente/inválido/gigante → 0 / clampado a 30 min', async () => {
+  const seen = [];
+  serviceImpl = { listReminders: async (userId, opts) => { seen.push(opts); return []; } };
+  await reminderController.list({ user: { id: 'u-1' }, query: {} }, makeRes(), () => {});
+  await reminderController.list({ user: { id: 'u-1' }, query: { trail: 'abc' } }, makeRes(), () => {});
+  await reminderController.list({ user: { id: 'u-1' }, query: { trail: '999999999' } }, makeRes(), () => {});
+  assert.equal(seen[0].trailMs, 0, 'sem param → comportamento atual (só futuros)');
+  assert.equal(seen[1].trailMs, 0, 'não-numérico → 0');
+  assert.equal(seen[2].trailMs, 30 * 60 * 1000, 'gigante clampado ao teto de 30min');
+});
+
 test('remove: 200 e owner vem só de req.user.id (ignora body/URL)', async () => {
   let userIdSeen = null;
   serviceImpl = {

@@ -49,6 +49,7 @@ model User {
   @@index([status], map: "users_status_idx")
   @@index([role], map: "users_role_idx")
   @@index([roleId], map: "users_role_id_idx")
+  @@index([createdAt], map: "users_created_at_idx")
   @@map("users")
 }
 
@@ -208,6 +209,7 @@ model WatchHistory {
 
   @@unique([userId, channelId], map: "watch_history_user_channel_unique")
   @@index([userId, lastPlayedAt], map: "watch_history_user_lastplayed_idx")
+  @@index([lastPlayedAt], map: "watch_history_lastplayed_idx")
   @@map("watch_history")
 }
 

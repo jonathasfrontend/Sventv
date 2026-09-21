@@ -51,7 +51,13 @@ async function resolveUser(req, res, next) {
       }
     }
 
-    if (!user || user.status === 'banned' || user.status === 'inactive') {
+    // Consistência com auth.validateSessionToken: SOLICITAÇÕES não-ativas
+    // (pending/inactive/banned) são anônimas também no SSR. Manter `pending`
+    // aqui enquanto a API exige `active` recria o loop: SSR/renderiza o
+    // dashboard, mas GET /api/auth/api-token responde 403 → redireciona a
+    // /login → redirectIfAuthenticated (resolveUser, que aceitava pending)
+    // devolve ao dashboard → loop infinito.
+    if (!user || user.status !== 'active') {
       req.user = null;
       return next();
     }

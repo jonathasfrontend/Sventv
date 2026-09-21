@@ -9,7 +9,6 @@
   <section class="admin-hero">
     <div>
       <h1>Painel Administrativo</h1>
-      <p>Gestão de métricas, canais e usuários da SvenTV.</p>
     </div>
     <div class="admin-hero-actions">
       <button class="btn btn-ghost btn-sm" id="refreshAdminBtn">Atualizar tudo</button>
@@ -20,6 +19,7 @@
     <button class="admin-tab admin-tab--active" data-tab="metrics" role="tab" aria-selected="true"><i class="ph ph-chart-line"></i> Métricas</button>
     <button class="admin-tab" data-tab="channels" role="tab" aria-selected="false"><i class="ph ph-television-simple"></i> Canais</button>
     <button class="admin-tab" data-tab="users" role="tab" aria-selected="false"><i class="ph ph-users"></i> Usuários</button>
+    <button class="admin-tab" data-tab="audit" role="tab" aria-selected="false"><i class="ph ph-scroll"></i> Auditoria</button>
   </nav>
 
   <!-- ═══════════════ MÉTRICAS ═══════════════ -->
@@ -110,39 +110,38 @@
       </div>
     </div>
 
-    <div class="admin-panel admin-audit-panel">
+    <div class="admin-panel admin-users-metrics-panel">
       <div class="admin-panel-header">
-        <h2>Logs de Auditoria</h2>
+        <h2>Métricas de Usuários</h2>
         <div class="admin-panel-filters">
-          <select id="auditActionFilter" class="form-input">
-            <option value="">Todas as ações</option>
+          <span class="metrics-note">Agregado ao vivo (users/watch_history/audit_logs)</span>
+          <select id="userMetricsPeriod" class="form-input">
+            <option value="week">Últimos 7 dias</option>
+            <option value="month">Últimos 30 dias</option>
+            <option value="quarter">Últimos 90 dias</option>
+            <option value="semester">Últimos 180 dias</option>
           </select>
-          <label class="admin-date-label">De
-            <input type="date" id="auditExportFrom" class="form-input form-input--date" aria-label="Data inicial da exportação">
-          </label>
-          <label class="admin-date-label">Até
-            <input type="date" id="auditExportTo" class="form-input form-input--date" aria-label="Data final da exportação">
-          </label>
-          <button class="btn btn-ghost btn-sm" id="loadAuditBtn">Recarregar</button>
-          <button class="btn btn-ghost btn-sm" id="exportAuditBtn" title="Baixar CSV do intervalo de datas">Exportar CSV</button>
+          <button class="btn btn-ghost btn-sm" id="loadUserMetricsBtn">Carregar</button>
         </div>
       </div>
-      <div class="admin-table-wrap">
-        <table class="admin-table admin-table--audit">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Ação</th>
-              <th>Usuário</th>
-              <th>Canal</th>
-              <th>IP</th>
-              <th>Request ID</th>
-            </tr>
-          </thead>
-          <tbody id="auditTableBody">
-            <tr><td colspan="6">Carregando auditoria...</td></tr>
-          </tbody>
-        </table>
+      <div class="admin-analytics-loading" id="userMetricsLoading" hidden>Consultando usuários...</div>
+      <div id="userMetricsBody" hidden>
+        <div class="admin-kpis admin-kpis--analytics" id="userMetricsKpis"></div>
+        <div class="admin-analytics-grid">
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Novos usuários por dia</h3>
+            <div class="user-metrics-sparkline" id="userMetricsSeries" role="img" aria-label="Novos usuários por dia no período"></div>
+            <p class="admin-analytics-empty" id="userMetricsSeriesEmpty">Sem registros no período.</p>
+          </div>
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Eventos de segurança</h3>
+            <div class="admin-analytics-list" id="userMetricsSecurity"></div>
+          </div>
+          <div class="admin-analytics-col">
+            <h3 class="admin-analytics-subtitle">Aceite de termos</h3>
+            <div class="admin-analytics-list" id="userMetricsTerms"></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -363,6 +362,48 @@
             </div>
           </section>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ AUDITORIA ═══════════════ -->
+  <section class="admin-tabpanel" data-panel="audit">
+    <div class="admin-panel admin-audit-panel">
+      <div class="admin-panel-header">
+        <div>
+          <h2>Logs de Auditoria</h2>
+          <p class="admin-panel-sub">Trilha de ações administrativas e de segurança</p>
+        </div>
+        <div class="admin-panel-filters">
+          <select id="auditActionFilter" class="form-input">
+            <option value="">Todas as ações</option>
+          </select>
+          <label class="admin-date-label">De
+            <input type="date" id="auditExportFrom" class="form-input form-input--date" aria-label="Data inicial da exportação">
+          </label>
+          <label class="admin-date-label">Até
+            <input type="date" id="auditExportTo" class="form-input form-input--date" aria-label="Data final da exportação">
+          </label>
+          <button class="btn btn-ghost btn-sm" id="loadAuditBtn">Recarregar</button>
+          <button class="btn btn-ghost btn-sm" id="exportAuditBtn" title="Baixar CSV do intervalo de datas">Exportar CSV</button>
+        </div>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-table--audit">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Ação</th>
+              <th>Usuário</th>
+              <th>Canal</th>
+              <th>IP</th>
+              <th>Request ID</th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+            <tr><td colspan="6">Carregando auditoria...</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>

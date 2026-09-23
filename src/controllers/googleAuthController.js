@@ -19,6 +19,15 @@ function _cleanState(state) {
   return state && typeof state === 'string' ? state.slice(0, 128) : null;
 }
 
+function _redactShape(t) {
+  if (t === null || t === undefined || typeof t !== 'object') return String(t).slice(0, 120);
+  const out = {};
+  for (const k of Object.keys(t)) {
+    out[k] = ['access_token', 'refresh_token', 'id_token'].includes(k) ? '<present>' : t[k];
+  }
+  return `${Array.isArray(t) ? 'array' : 'object'} ${JSON.stringify(out).slice(0, 400)}`;
+}
+
 function _generateState() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -135,7 +144,7 @@ const googleAuthController = {
 
       const { tokens } = await exchangeCodeForToken(code);
       if (!tokens || !tokens.access_token) {
-        const exchangeErr = tokens && tokens.error ? tokens.error + (tokens.error_description ? `: ${tokens.error_description}` : '') : '(sem error/access_token)';
+        const exchangeErr = tokens && tokens.error ? tokens.error + (tokens.error_description ? `: ${tokens.error_description}` : '') : `(sem error/access_token; typeof=${typeof tokens} shape=${_redactShape(tokens)})`;
         logger.warn(`Google token exchange: resposta sem access_token [${exchangeErr}]`);
         metrics.inc('google.failure');
         return res.redirect(`${callbackUrl}/login?error=google&reason=token`);

@@ -59,7 +59,7 @@ async function getGoogleUserInfo(accessToken) {
       givenName: data.given_name || null,
       familyName: data.family_name || null,
       picture: data.picture || null,
-      verifiedEmail: data.verified_email || false,
+      verifiedEmail: data.verified_email === true || data.email_verified === true,
     };
   } catch (err) {
     logger.warn(`Google userinfo fetch failed: ${err && err.message}`);
@@ -79,7 +79,7 @@ async function exchangeCodeForToken(code) {
       timeout: 10_000,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-    return resp.data;
+    return { tokens: resp.data };
   } catch (err) {
     const details = err && err.response && err.response.data;
     const googleErr = details && details.error ? `${details.error}${details.error_description ? `: ${details.error_description}` : ''}` : '';

@@ -81,7 +81,9 @@ async function exchangeCodeForToken(code) {
     });
     return resp.data;
   } catch (err) {
-    logger.warn(`Google token exchange failed: ${err && err.message}`);
+    const details = err && err.response && err.response.data;
+    const googleErr = details && details.error ? `${details.error}${details.error_description ? `: ${details.error_description}` : ''}` : '';
+    logger.warn(`Google token exchange failed: ${err && err.message}${googleErr ? ` [${googleErr}]` : ''} client=${process.env.GOOGLE_CLIENT_ID} redirect=${process.env.GOOGLE_REDIRECT_URI}`);
     throw new Error('Falha na autenticação com o Google.');
   }
 }

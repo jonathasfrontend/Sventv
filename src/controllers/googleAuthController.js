@@ -135,6 +135,8 @@ const googleAuthController = {
 
       const { tokens } = await exchangeCodeForToken(code);
       if (!tokens || !tokens.access_token) {
+        const exchangeErr = tokens && tokens.error ? tokens.error + (tokens.error_description ? `: ${tokens.error_description}` : '') : '(sem error/access_token)';
+        logger.warn(`Google token exchange: resposta sem access_token [${exchangeErr}]`);
         metrics.inc('google.failure');
         return res.redirect(`${callbackUrl}/login?error=google&reason=token`);
       }

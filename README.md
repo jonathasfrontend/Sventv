@@ -494,7 +494,7 @@ Princípio de prioridade do projeto: **Segurança > Privacidade > Correção > E
 
 - **Helmet**: headers de segurança globais; CSP/frameguard desabilitados no `app.js` porque o player é embutível — ver abaixo.
 - **CORS**: `ALLOWED_ORIGINS` vírgula-separada; sem a variável → `*`.
-- **Sanitização**: `sanitizeMongo` (chaves `$`/`.`) e `sanitizeXss` (escape HTML) globais em `req.body/query/params`, **exceto** em `/stream` e `/proxy` — exceção **intencional** (escapar corromperia `?p=`/`?token=`). Não "consertar".
+- **Sanitização**: `sanitizeMongo` (chaves `$`/`.`) e `sanitizeXss` (escape HTML) globais em `req.body/query/params`, **exceto** em `/stream`, `/proxy` e `/api/google/*` — exceção **intencional** (escapar corromperia `?p=`/`?token=` e o `code`/`state` do OAuth). Não "consertar".
 - **Remove fingerprint**: headers `X-Powered-By` e `Server` removidos.
 - **Security logger**: detecta e loga path traversal, SQLi básico, XSS e NoSQL residual.
 - **Clickjacking**: `X-Frame-Options: SAMEORIGIN` global **exceto** `/stream`/`/proxy`, que usam CSP `frame-ancestors *` no controller (substitui o antigo `ALLOWALL`).

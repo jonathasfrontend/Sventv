@@ -1,0 +1,59 @@
+# Ambiente de desenvolvimento LOCAL da SvenTV API.
+# Produção continua em Supabase (Postgres) + Upstash (Redis) — isso aqui
+# NÃO substitui a infra de produção, só evita depender dela durante o dev.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sventv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sventv
+      POSTGRES_PASSWORD: sventv_dev_only
+      POSTGRES_DB: sventv
+    ports:
+      - "5432:5432"
+    volumes:
+      - sventv_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sventv -d sventv"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sventv-redis
+    restart: unless-stopped
+    # Sem publicar 6379 no host — só o proxy HTTP (abaixo) precisa falar
+    # com ele. Remova o comentário se quiser inspecionar via redis-cli direto.
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - sventv_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-http:
+    # Proxy que expõe uma API HTTP compatível com o Upstash REST API sobre
+    # um Redis comum — é o que permite o redisStore.js (feito para Upstash)
+    # funcionar sem nenhuma mudança de código contra o Redis local.
+    image: hiett/serverless-redis-http:latest
+    container_name: sventv-redis-http
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: local-dev-token
+      SRH_CONNECTION_STRING: "redis://redis:6379"
+    ports:
+      - "8079:80"
+
+volumes:
+  sventv_pgdata:
+  sventv_redisdata:

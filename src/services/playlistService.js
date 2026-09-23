@@ -66,7 +66,17 @@ const listPlaylists = async (userId, { limit = 20, page = 1 } = {}) => {
       orderBy: { createdAt: 'desc' },
       skip,
       take,
-      include: { _count: { select: { channels: true } } },
+      include: {
+        _count: { select: { channels: true } },
+        // Os primeiros logos (snapshot `channelLogo` no momento do save —
+        // nunca o upstream atual) alimentam o efeito de cartas empilhadas
+        // do card. Include relacional com `take` = 1 query batched, sem N+1.
+        channels: {
+          take: 4,
+          orderBy: { createdAt: 'asc' },
+          select: { channelLogo: true, channelName: true },
+        },
+      },
     }),
     prisma.playlist.count({ where: { userId } }),
   ]);
@@ -77,6 +87,10 @@ const listPlaylists = async (userId, { limit = 20, page = 1 } = {}) => {
       name: p.name,
       description: p.description,
       channelCount: p._count.channels,
+      // Cartas empilhadas: os logos (snapshot) dos ≤4 primeiros canais da
+      // playlist. `filter(Boolean)` remove os que entraram sem logo — o
+      // card cai pra 1 carta/placeholder, nunca quebra o layout.
+      previewLogos: p.channels.map((c) => c.channelLogo).filter(Boolean),
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     })),

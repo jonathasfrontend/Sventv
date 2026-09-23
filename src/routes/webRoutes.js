@@ -8,6 +8,11 @@ const { toPublicChannels } = require('../utils/publicChannel');
 
 const m3uService = M3UService.getShared();
 
+// Chave pública do reCAPTCHA (se configurada): usado para renderizar o
+// widget nas páginas de auth. Vazia → widget não aparece e o backend
+// permanece fail-open (sem CAPTCHA_SECRET_KEY não há verificação).
+const captchaSiteKey = () => process.env.CAPTCHA_SITE_KEY || '';
+
 // ── Páginas públicas ────────────────────────────────────────
 
 // Landing page
@@ -28,6 +33,7 @@ router.get('/login', redirectIfAuthenticated, (req, res) => {
     user: null,
     flash,
     returnTo: req.query.returnTo || '/dashboard',
+    captchaSiteKey: captchaSiteKey(),
   });
 });
 
@@ -39,6 +45,7 @@ router.get('/register', redirectIfAuthenticated, (req, res) => {
     user: null,
     flash,
     termsVersion: config.terms.version,
+    captchaSiteKey: captchaSiteKey(),
   });
 });
 
@@ -51,6 +58,7 @@ router.get('/forgot-password', redirectIfAuthenticated, (req, res) => {
     user: null,
     flash,
     termsVersion: config.terms.version,
+    captchaSiteKey: captchaSiteKey(),
   });
 });
 
@@ -64,6 +72,7 @@ router.get('/reset-password', (req, res) => {
     flash,
     email: req.query.email || '',
     termsVersion: config.terms.version,
+    captchaSiteKey: captchaSiteKey(),
   });
 });
 

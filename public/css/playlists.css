@@ -24,15 +24,7 @@
 
 /* ── Criar playlist ──────────────────────────────────────── */
 .playlists-create {
-  display: grid;
-  grid-template-columns: 1.2fr 1.4fr auto;
-  gap: 14px;
-  align-items: end;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  margin-bottom: 26px;
 }
 
 .playlists-create + .form-alert { margin-top: -16px; margin-bottom: 16px; }
@@ -335,3 +327,82 @@
 @media (max-width: 480px) {
   .modal-container { border-radius: var(--radius-lg); }
 }
+/* ---- Cartas empilhadas (preview de logos dos canais da playlist) ---- */
+.playlist-card-logos {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 76px;
+  margin: -6px 0 6px;
+}
+.pcard-logo-stack {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  transition: transform 0.15s ease;
+}
+.pcard-logo-stack:nth-child(1) { transform: translateX(-34px) rotate(-10deg); z-index: 4; }
+.pcard-logo-stack:nth-child(2) { transform: translateX(-12px) rotate(-5deg);  z-index: 3; }
+.pcard-logo-stack:nth-child(3) { transform: translateX(12px)  rotate(5deg);   z-index: 2; }
+.pcard-logo-stack:nth-child(4) { transform: translateX(34px)  rotate(10deg);  z-index: 1; }
+.pcard-logo-stack:nth-child(n+5) { display: none; }
+.playlist-card:hover .pcard-logo-stack { border-color: var(--primary); }
+.playlist-card:hover .pcard-logo-stack:nth-child(1) { transform: translateX(-38px) rotate(-11deg); }
+.playlist-card:hover .pcard-logo-stack:nth-child(2) { transform: translateX(-14px) rotate(-6deg); }
+.playlist-card:hover .pcard-logo-stack:nth-child(3) { transform: translateX(14px)  rotate(6deg); }
+.playlist-card:hover .pcard-logo-stack:nth-child(4) { transform: translateX(38px)  rotate(11deg); }
+/* ---- Overlay de criacao (painel central) ---- */
+.playlist-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.playlist-overlay[hidden] { display: none; }
+.playlist-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: overlayFade 0.18s ease;
+}
+.playlist-overlay-panel {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  animation: overlayPop 0.2s ease;
+}
+.playlist-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.playlist-overlay-header h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.playlist-overlay-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+@keyframes overlayFade { from { opacity: 0; } }
+@keyframes overlayPop  { from { opacity: 0; transform: translateY(10px) scale(0.98); } }

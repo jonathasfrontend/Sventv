@@ -4,6 +4,7 @@ const express = require('express');
 const channelRoutes = require('./channelRoutes');
 const epgRoutes = require('./epgRoutes');
 const authRoutes = require('./authRoutes');
+const googleRoutes = require('./googleRoutes');
 const adminRoutes = require('./adminRoutes');
 const userRoutes = require('./userRoutes');
 const playbackRoutes = require('./playbackRoutes');
@@ -29,6 +30,7 @@ router.get('/health', (req, res) => {
 
 // Rotas de autenticação (públicas e protegidas por sessão)
 router.use('/auth', authRoutes);
+router.use('/google', googleRoutes);
 
 // Rotas dos canais (todas protegidas por API token)
 router.use('/channels', channelRoutes);

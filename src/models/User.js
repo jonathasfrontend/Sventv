@@ -30,6 +30,8 @@ const mapRowToModel = (row, includeSensitive = false) => {
     email: row.email,
     password: includeSensitive ? row.password || null : undefined,
     avatar: row.avatar || '',
+    googleId: row.google_id || null,
+    authProvider: row.auth_provider || 'local',
     apiToken: includeSensitive ? row.apiToken || null : undefined,
     status: row.status,
     role: row.role,
@@ -67,6 +69,8 @@ const toPublicJson = (user) => {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+  if (user.googleId) ret.googleId = user.googleId;
+  if (user.authProvider && user.authProvider !== 'local') ret.authProvider = user.authProvider;
   return ret;
 };
 
@@ -217,7 +221,7 @@ class User {
     );
   }
 
-  static async create({ name, email, password, avatar, termsAcceptedAt, termsVersion }) {
+  static async create({ name, email, password, avatar, termsAcceptedAt, termsVersion, googleId, authProvider }) {
     const normalizedEmail = normalizeEmail(email);
 
     const rounds = config.security.bcryptRounds;
@@ -230,6 +234,8 @@ class User {
       email: normalizedEmail,
       password: passwordHash,
       avatar: avatar || '',
+      googleId: googleId || null,
+      authProvider: authProvider || 'local',
       status: 'active',
       role: 'user',
       roleId: defaultRole?.id || null,
@@ -296,6 +302,10 @@ class User {
 
     const payload = {};
     if (normalized.name !== undefined) payload.name = String(normalized.name).trim();
+    if (normalized.googleId !== undefined) {
+      payload.googleId = normalized.googleId || null;
+    }
+
     if (normalized.avatar !== undefined) payload.avatar = normalized.avatar;
     if (normalized.lastLoginIp !== undefined) payload.lastLoginIp = normalized.lastLoginIp;
 
@@ -343,6 +353,15 @@ class User {
   static async findByEmail(email) {
     try {
       const row = await userRepository.findByEmail(email);
+      return mapRowToModel(row, false);
+    } catch (error) {
+      handleDbError(error);
+    }
+  }
+
+  static async findByGoogleId(googleId) {
+    try {
+      const row = await userRepository.findByGoogleId(googleId);
       return mapRowToModel(row, false);
     } catch (error) {
       handleDbError(error);

@@ -71,6 +71,19 @@ const counters = {
   remindersEmailFailures: 0,
   // Busca combinada (EPG + canais)
   guideSearches: 0,
+  // Segurança: WAF (block/monitoramento) + CAPTCHA + OAuth Google
+  wafRequests: 0,
+  wafDetected: 0,
+  wafBlockedIp: 0,
+  wafRateLimited: 0,
+  securityBlocks: 0,
+  captchaSuccesses: 0,
+  captchaFailures: 0,
+  'google.login': 0,
+  'google.register': 0,
+  'google.userCreated': 0,
+  'google.failure': 0,
+  'googleIdMismatch': 0,
 };
 
 const latency = {

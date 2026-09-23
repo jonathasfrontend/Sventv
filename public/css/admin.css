@@ -851,3 +851,58 @@
   letter-spacing: 0;
   font-weight: 500;
 }
+
+/* ── Segurança (WAF) ──────────────────────────────────────── */
+.admin-waf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-waf-blocked,
+.admin-waf-events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-waf-ips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-waf-ip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--error, #f87171);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.admin-waf-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-waf-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.admin-waf-count strong {
+  color: var(--fg);
+  font-size: 14px;
+}

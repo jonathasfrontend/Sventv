@@ -7,26 +7,46 @@
 
 <main class="playlists-main">
   <div class="playlists-header">
-    <h1 class="playlists-title">Minhas Playlists</h1>
-    <p class="playlists-desc">Organize seus canais favoritos. Um canal só pode estar em uma playlist por conta.</p>
+    <div class="playlists-header-copy">
+      <h1 class="playlists-title">Minhas Playlists</h1>
+      <p class="playlists-desc">Organize seus canais favoritos. Um canal só pode estar em uma playlist por conta.</p>
+    </div>
+    <button type="button" class="btn btn-primary" id="openCreateOverlayBtn">
+      <i class="ph ph-plus" aria-hidden="true"></i>
+      <span class="btn-text">Nova playlist</span>
+    </button>
   </div>
 
-  <!-- ── Criar playlist ────────────────────────────────────── -->
-  <form id="createPlaylistForm" class="playlists-create" novalidate>
-    <div class="form-group">
-      <label class="form-label" for="newPlaylistName">Nome da playlist</label>
-      <input type="text" id="newPlaylistName" class="form-input" placeholder="Ex.: Esportes, Filmes, Notícias..." maxlength="80" required>
-      <span class="form-error" id="newPlaylistNameError"></span>
+  <!-- Overlay: criação de playlist -->
+  <div class="playlist-overlay" id="createOverlay" hidden>
+    <div class="playlist-overlay-backdrop" data-overlay-close></div>
+    <div class="playlist-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+      <div class="playlist-overlay-header">
+        <h2 id="overlayTitle">Nova playlist</h2>
+        <button type="button" class="btn btn-ghost btn-sm" data-overlay-close aria-label="Fechar">
+          <i class="ph ph-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <form id="createPlaylistForm" class="playlists-create" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="newPlaylistName">Nome da playlist</label>
+          <input type="text" id="newPlaylistName" class="form-input" placeholder="Ex.: Esportes, Filmes, Notícias..." maxlength="80" required>
+          <span class="form-error" id="newPlaylistNameError"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="newPlaylistDescription">Descrição</label>
+          <input type="text" id="newPlaylistDescription" class="form-input" placeholder="O que tem nesta playlist? (opcional)" maxlength="255">
+        </div>
+        <div class="playlist-overlay-actions">
+          <button type="button" class="btn btn-ghost" data-overlay-close>Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="createPlaylistSubmit">
+            <span class="btn-text">Criar playlist</span>
+          </button>
+        </div>
+        <div id="createAlert" class="form-alert" hidden></div>
+      </form>
     </div>
-    <div class="form-group">
-      <label class="form-label" for="newPlaylistDescription">Descrição</label>
-      <input type="text" id="newPlaylistDescription" class="form-input" placeholder="O que tem nesta playlist? (opcional)" maxlength="255">
-    </div>
-    <button type="submit" class="btn btn-primary" id="createPlaylistSubmit">
-      <span class="btn-text">Criar playlist</span>
-    </button>
-    <div id="createAlert" class="form-alert" hidden></div>
-  </form>
+  </div>
 
   <!-- ── Lista de playlists ────────────────────────────────── -->
   <div class="playlists-list" id="playlistsList">

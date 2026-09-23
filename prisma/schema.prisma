@@ -16,6 +16,8 @@ model User {
   email         String    @unique @db.VarChar(255)
   password      String
   avatar        String    @default("")
+  googleId      String?   @unique @map("google_id")
+  authProvider  String?   @default("local") @map("auth_provider") @db.VarChar(32)
   apiToken      String?   @unique @map("api_token")
   status        String    @default("active") @db.VarChar(20)
   role          String    @default("user") @db.VarChar(20)
@@ -50,6 +52,8 @@ model User {
   @@index([role], map: "users_role_idx")
   @@index([roleId], map: "users_role_id_idx")
   @@index([createdAt], map: "users_created_at_idx")
+  @@index([googleId], map: "users_google_id_idx")
+  @@index([authProvider], map: "users_auth_provider_idx")
   @@map("users")
 }
 

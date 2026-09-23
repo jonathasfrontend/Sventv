@@ -149,6 +149,7 @@ api-stream-m3u8/
 ├── index.js                     # Entrypoint local (dev) — listen + connectDB
 ├── package.json
 ├── vercel.json                  # Vercel → build src/app.js, região gru1
+├── docker-compose.yml           # Ambiente LOCAL de dev: Postgres 16 + Redis 7 + proxy (ver seção Docker)
 ├── AGENTS.md                    # Guia operacional para agentes de IA/desenvolvedores
 ├── .env.example                 # Template de variáveis de ambiente
 ├── prisma/
@@ -234,6 +235,7 @@ api-stream-m3u8/
 | **Vercel** | Deploy serverless (`vercel.json` → `src/app.js`) |
 | **Supabase (PostgreSQL)** | Banco de dados + Storage |
 | **Upstash Redis (REST)** | Estado distribuído para rate limiting e concorrência de streams (opcional; fallback em memória) |
+| **Docker Compose** | Ambiente de **desenvolvimento local** (Postgres 16 + Redis 7 + proxy) — alternativa ao Supabase/Upstash durante o dev, ver seção abaixo |
 | **HTTP/HTTPS** | Protocolo |
 
 ---
@@ -639,7 +641,12 @@ analyticsService            →  métricas admin ao vivo + agregação diária +
 |---|---|
 | **Node.js** | 18.x+ (recomendado 20+) |
 | **npm** | 9.x+ |
-| **Supabase** | Projeto PostgreSQL ativo (URL de conexão + service role key) |
+| **Docker + Compose v2** | Necessário para o dev local (see seção **"Desenvolvimento local com Docker"**) |
+| **Supabase** (ou **Postgres local via Docker**) | Projeto PostgreSQL ativo (URL + service role key) *ou* Postgres 16 via `docker compose` |
+
+> 💡 **Sem conta Supabase?** O `docker-compose.yml` sobe localmente Postgres 16
+> + Redis 7 + proxy HTTP (ver seção **"Desenvolvimento local com Docker"**).
+> Produção continua em Supabase/Upstash — o Docker é só uma alternativa de dev.
 
 ### Passo a passo
 
@@ -657,8 +664,12 @@ cp .env.example .env    # preencha os valores reais (ver seção abaixo)
 # 4. (Opcional) Crie os segredos JWT com segurança
 npm run generate:secrets
 
-# 5. Aplique as migrações
+# 5. Banco de dados
+#    Já existente (esquema sincronizado)? Aplique migrations pendentes:
 npx prisma migrate deploy
+#    Banco NOVO/vazio? A migration `..._init` é só um marcador baseline, então
+#    use `npx prisma db push` (sync direto do schema — como a produção nasceu):
+#    npx prisma db push
 
 # 6. Suba o servidor
 npm run dev             # http://localhost:3000 (nodemon)
@@ -676,11 +687,53 @@ curl http://localhost:3000/api/health
 
 ```bash
 npx prisma generate          # regenera o client (pós-mudança de schema)
-npx prisma migrate deploy    # aplica migrações pendentes
+npx prisma migrate deploy    # aplica migrações pendentes (sobre schema já sincronizado)
 npm run prisma:migrate       # atalho equivalente
+npx prisma db push           # banco NOVO/vazio: sync direto do schema.prisma
 ```
 
 **Pooling Supabase**: na Vercel a `DATABASE_URL` DEVE usar o **transaction pooler** (`:6543`); `src/prisma/client.js` injeta `pgbouncer=true&connection_limit=1` automaticamente ao detectar porta 6543 (ou `VERCEL=1`). A CLI do Prisma usa `DIRECT_URL` (apontar **sempre** para `:5432`) — o transaction pooler não suporta DDL.
+
+### Desenvolvimento local com Docker (Postgres + Redis)
+
+O `docker-compose.yml` sobe um ambiente **local** com Postgres 16, Redis 7 e um proxy HTTP — para desenvolver e testar **sem depender do Supabase/Upstash reais**. Produção continua intacta em Supabase (`:6543`) + Upstash; aqui só muda o `.env` de dev.
+
+```
+App local (redisStore.js) ──HTTP (API Upstash)──▶ serverless-redis-http (8079) ──RESP/TCP──▶ redis:7-alpine
+```
+
+**A "pegadinha" do Redis**: o `redisStore.js` fala com a **REST API do Upstash** (HTTP) — decisão correta para serverless, já que lambda não sustenta TCP. Um `redis:7` puro fala RESP/TCP e não entenderia essas chamadas. Por isso o compose inclui o **`serverless-redis-http`**: proxy open-source do próprio Upstash que envolve o Redis comum e expõe a **mesma API REST** — o `redisStore.js` **não muda uma linha**, só as variáveis `UPSTASH_REDIS_REST_URL/TOKEN` passam a apontar para `http://localhost:8079` com token `local-dev-token`. O serviço `redis` **não publica a porta 6379 no host** (só o proxy fala com ele pela rede interna); descomente o mapeamento se quiser inspecionar com `redis-cli`.
+
+```bash
+# 1. Suba o ambiente (Postgres 16 + Redis 7 + proxy)
+npm run docker:up
+
+# 2. Na primeira subida (banco LOCAL limpo), sincronize o schema direto do
+#    `schema.prisma` — o mesmo método que originou o banco de produção
+npx prisma db push
+
+#    ⚠️ NÃO use `prisma migrate deploy` num banco vazio: a migration
+#    `..._init` é só um marcador baseline (sem DDL — produção nasceu via
+#    `db push`), então a cadeia incremental quebra na 2ª migration
+#    ("relation users does not exist"). Com o banco já sincronizado,
+#    `npm run prisma:migrate` aplica migrations pendentes por cima (padrão de produção).
+
+# 3. No .env, Sobrescreva só o bloco apontando para o Docker:
+#    DATABASE_URL="postgresql://sventv:sventv_dev_only@localhost:5432/sventv"
+#    DIRECT_URL="postgresql://sventv:sventv_dev_only@localhost:5432/sventv"
+#    UPSTASH_REDIS_REST_URL="http://localhost:8079"
+#    UPSTASH_REDIS_REST_TOKEN="local-dev-token"
+
+# 4. Suba a API contra o Docker
+npm run dev
+```
+
+Comandos auxiliares:
+
+- `npm run docker:down` — derruba os containers (mantém os volumes com o banco).
+- `npm run docker:reset` — derruba **apagando os volumes** (banco/Redis zerados; útil para recomeçar do zero).
+
+> As credenciais `sventv`/`sventv_dev_only`/`local-dev-token` são **exclusivas do dev local** (descartáveis, nunca usadas em produção). O bloco correspondente está comentado no `.env.example` ("Desenvolvimento local (Docker)").
 
 ---
 

@@ -318,6 +318,76 @@
   });
 
   // ════════════════════════════════════════════════════════════
+  // Conta Google — Vincular / Desvincular
+  // ════════════════════════════════════════════════════════════
+
+  const googleAccountStatus = $('googleAccountStatus');
+  const linkGoogleBtn = $('linkGoogleBtn');
+  const unlinkGoogleBtn = $('unlinkGoogleBtn');
+  const googleLinkAlert = $('googleLinkAlert');
+
+  function readUserData() {
+    const el = document.getElementById('__USER_DATA__');
+    if (!el) return {};
+    try { return JSON.parse(el.textContent) || {}; } catch (_) { return {}; }
+  }
+
+  let googleLinked = !!readUserData().googleId;
+
+  function renderGoogleState() {
+    if (googleLinked) {
+      if (googleAccountStatus) {
+        googleAccountStatus.textContent = 'Conta Google vinculada. Você pode entrar sem senha.';
+        googleAccountStatus.className = 'google-account-status google-account-status--linked';
+      }
+      if (linkGoogleBtn) linkGoogleBtn.hidden = true;
+      if (unlinkGoogleBtn) unlinkGoogleBtn.hidden = false;
+    } else {
+      if (googleAccountStatus) {
+        googleAccountStatus.textContent = 'Nenhuma conta Google vinculada ainda.';
+        googleAccountStatus.className = 'google-account-status';
+      }
+      if (linkGoogleBtn) linkGoogleBtn.hidden = false;
+      if (unlinkGoogleBtn) unlinkGoogleBtn.hidden = true;
+    }
+  }
+
+  unlinkGoogleBtn?.addEventListener('click', async () => {
+    if (!window.confirm('Desvincular sua conta Google? Você poderá voltar a entrar com seu e-mail e senha.')) {
+      return;
+    }
+
+    try {
+      setLoading(unlinkGoogleBtn, true);
+      await apiFetch('/api/google/unlink', { method: 'POST', body: '{}' });
+      googleLinked = false;
+      renderGoogleState();
+      showAlert(googleLinkAlert, 'Conta Google desvinculada.', 'success');
+    } catch (err) {
+      showAlert(googleLinkAlert, err.message, 'error');
+    } finally {
+      setLoading(unlinkGoogleBtn, false);
+    }
+  });
+
+  // Feedback vindo do /api/google/callback (vínculo concluído/recusado).
+  {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('linked') === '1') {
+      googleLinked = true;
+      renderGoogleState();
+      showAlert(googleLinkAlert, 'Conta Google vinculada com sucesso.', 'success');
+    } else if (params.get('linked') === '0' || params.get('google') === 'conflict') {
+      showAlert(googleLinkAlert, 'Este e-mail do Google já está vinculado a outra conta.', 'error');
+    }
+    if (params.has('linked') || params.has('google')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }
+
+  renderGoogleState();
+
+  // ════════════════════════════════════════════════════════════
   // Zona de Perigo
   // ════════════════════════════════════════════════════════════
 

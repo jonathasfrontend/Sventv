@@ -18,6 +18,24 @@ const isSaasSchemaReady = async () => {
   return Boolean(row?.roles_table && row?.user_roles_table);
 };
 
+// Tabela/colunas de planos são legado do Supabase (o model Plan não existe
+// mais no schema Prisma). Bancos novos (dev Docker) não têm `plans` — o
+// backfill precisa ser condicional para não quebrar o bootstrap.
+const isPlansSchemaReady = async () => {
+  const [row] = await prisma.$queryRaw`
+    SELECT
+      to_regclass('public.plans')::text AS plans_table,
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'plan_id'
+      ) AS users_has_plan_id
+  `;
+
+  return Boolean(row?.plans_table && row?.users_has_plan_id);
+};
+
 const bootstrapSaasData = async () => {
   if (!prisma.role) {
     logger.warn('Prisma Client ainda sem modelos SaaS. Rode: npm run prisma:generate');
@@ -54,13 +72,17 @@ const bootstrapSaasData = async () => {
       AND (u."role_id" IS NULL OR u."role_id" <> r."id")
   `;
 
-  await prisma.$executeRaw`
-    UPDATE "users" u
-    SET "plan_id" = p."id"
-    FROM "plans" p
-    WHERE p."code" = u."plan"
-      AND (u."plan_id" IS NULL OR u."plan_id" <> p."id")
-  `;
+  if (await isPlansSchemaReady()) {
+    await prisma.$executeRaw`
+      UPDATE "users" u
+      SET "plan_id" = p."id"
+      FROM "plans" p
+      WHERE p."code" = u."plan"
+        AND (u."plan_id" IS NULL OR u."plan_id" <> p."id")
+    `;
+  } else {
+    logger.warn('Tabela/colunas de plans ausentes — backfill de plan_id ignorado.');
+  }
 };
 
 module.exports = {

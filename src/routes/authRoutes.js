@@ -18,35 +18,34 @@ const authController = require('../controllers/authController');
 const { requireSessionAuth } = require('../middlewares/auth');
 const { loginLimiter, registerLimiter, forgotPasswordLimiter, resetPasswordLimiter } = require('../middlewares/rateLimiter');
 const { validate } = require('../middlewares/validate');
+const verifyCaptcha = require('../middlewares/captcha');
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ── Rotas públicas ────────────────────────────────────────────
 
-/**
- * @route  POST /auth/register
- * @desc   Cria uma nova conta de usuário
- * @access Público
- */
 router.post(
   '/register',
   registerLimiter,
   validate('register'),
+  verifyCaptcha,
   authController.register
 );
 
-/**
- * @route  POST /auth/login
- * @desc   Autentica o usuário e retorna tokens
- * @access Público
- */
 router.post(
   '/login',
   loginLimiter,
   validate('login'),
+  verifyCaptcha,
   authController.login
 );
+
+router.get('/google/url', authController.getGoogleAuthUrl);
+router.post('/google/callback', validate('googleCallback'), authController.googleCallback);
+router.post('/google/login', loginLimiter, validate('googleLogin'), authController.googleLogin);
+router.post('/google/register', registerLimiter, validate('googleRegister'), authController.googleRegister);
+router.post('/google/state', authController.generateGoogleState);
 
 // ── Recuperação de senha (públicas) ───────────────────────────
 
@@ -54,6 +53,7 @@ router.post(
   '/forgot-password',
   forgotPasswordLimiter,
   validate('forgotPassword'),
+  verifyCaptcha,
   authController.forgotPassword
 );
 
@@ -61,6 +61,7 @@ router.post(
   '/reset-password',
   resetPasswordLimiter,
   validate('resetPassword'),
+  verifyCaptcha,
   authController.resetPassword
 );
 

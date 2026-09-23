@@ -54,6 +54,7 @@ const schemas = {
         'any.required': 'Você deve aceitar os Termos de Uso.',
       }),
     avatar: Joi.string().uri().max(500).allow('').optional(),
+    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   login: Joi.object({
@@ -64,6 +65,7 @@ const schemas = {
     password: Joi.string().min(1).max(128).required().messages({
       'any.required': 'A senha é obrigatória.',
     }),
+    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   updateProfile: Joi.object({
@@ -102,6 +104,7 @@ const schemas = {
       'string.email': 'Informe um e-mail válido.',
       'any.required': 'O e-mail é obrigatório.',
     }),
+    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   resetPassword: Joi.object({
@@ -140,6 +143,7 @@ const schemas = {
         'any.only': 'As senhas não coincidem.',
         'any.required': 'A confirmação de senha é obrigatória.',
       }),
+    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   adminChangeRole: Joi.object({
@@ -386,6 +390,26 @@ const schemas = {
       return helpers.message('O horário de início é obrigatório.');
     }
     return { channelId: value.channelId, title, startsAt, stopAt: value.stopAt !== undefined ? value.stopAt : null };
+  }),
+
+  // Google OAuth
+  googleCallback: Joi.object({
+    code: Joi.string().trim().required().messages({ 'any.required': 'Código de autorização obrigatório.' }),
+    state: Joi.string().trim().required().messages({ 'any.required': 'Estado obrigatório.' }),
+  }),
+
+  googleLogin: Joi.object({
+    code: Joi.string().trim().required().messages({ 'any.required': 'Código de autorização obrigatório.' }),
+    state: Joi.string().trim().required().messages({ 'any.required': 'Estado obrigatório.' }),
+  }),
+
+  googleRegister: Joi.object({
+    code: Joi.string().trim().required().messages({ 'any.required': 'Código de autorização obrigatório.' }),
+    state: Joi.string().trim().required().messages({ 'any.required': 'Estado obrigatório.' }),
+    acceptedTerms: Joi.boolean().valid(true).required().messages({
+      'any.only': 'Você deve aceitar os Termos de Uso para criar uma conta.',
+      'any.required': 'Você deve aceitar os Termos de Uso.',
+    }),
   }),
 };
 

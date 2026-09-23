@@ -4,14 +4,8 @@ const User = require('../models/User');
 const config = require('../config/app');
 const logger = require('../utils/logger');
 
-/**
- * Tenta resolver o usuário a partir do sessionToken (cookie ou header).
- * Caso não esteja autenticado, apenas seta req.user = null (sem bloquear).
- * Útil para páginas públicas que precisam saber se o usuário está logado.
- */
 async function resolveUser(req, res, next) {
   try {
-    // Prioridade: cookie > Authorization header > header x-session-token
     const token =
       req.cookies?.sessionToken ||
       (req.headers.authorization?.startsWith('Bearer ')
@@ -29,13 +23,10 @@ async function resolveUser(req, res, next) {
     try {
       decoded = jwt.verify(token, config.jwt.secret);
     } catch (_) {
-      // Token inválido/expirado — deslogado de verdade
       req.user = null;
       return next();
     }
 
-    // Busca o usuário com 1 retry: falhas transitórias de banco
-    // (cold start serverless / pooler) não devem deslogar ninguém
     let user = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -51,18 +42,11 @@ async function resolveUser(req, res, next) {
       }
     }
 
-    // Consistência com auth.validateSessionToken: SOLICITAÇÕES não-ativas
-    // (pending/inactive/banned) são anônimas também no SSR. Manter `pending`
-    // aqui enquanto a API exige `active` recria o loop: SSR/renderiza o
-    // dashboard, mas GET /api/auth/api-token responde 403 → redireciona a
-    // /login → redirectIfAuthenticated (resolveUser, que aceitava pending)
-    // devolve ao dashboard → loop infinito.
     if (!user || user.status !== 'active') {
       req.user = null;
       return next();
     }
 
-    // Revogação server-side: sessões antigas (sv defasado) viram anônimas
     if (
       typeof decoded.sv === 'number' &&
       decoded.sv !== (user.sessionVersion || 0)
@@ -80,10 +64,6 @@ async function resolveUser(req, res, next) {
   return next();
 }
 
-/**
- * Middleware de proteção: exige sessão ativa.
- * Se não autenticado, redireciona para /login.
- */
 async function requireWebAuth(req, res, next) {
   await resolveUser(req, res, () => {});
   if (!req.user) {
@@ -93,10 +73,6 @@ async function requireWebAuth(req, res, next) {
   return next();
 }
 
-/**
- * Middleware para páginas de auth (login/register):
- * Se já estiver autenticado, redireciona para /dashboard.
- */
 async function redirectIfAuthenticated(req, res, next) {
   await resolveUser(req, res, () => {});
   if (req.user) {
@@ -105,10 +81,6 @@ async function redirectIfAuthenticated(req, res, next) {
   return next();
 }
 
-/**
- * Middleware para páginas web protegidas por role.
- * Redireciona usuários sem permissão para a dashboard.
- */
 function requireWebRole(...roles) {
   return async (req, res, next) => {
     await resolveUser(req, res, () => {});

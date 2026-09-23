@@ -20,6 +20,7 @@
     <button class="admin-tab" data-tab="channels" role="tab" aria-selected="false"><i class="ph ph-television-simple"></i> Canais</button>
     <button class="admin-tab" data-tab="users" role="tab" aria-selected="false"><i class="ph ph-users"></i> Usuários</button>
     <button class="admin-tab" data-tab="audit" role="tab" aria-selected="false"><i class="ph ph-scroll"></i> Auditoria</button>
+    <button class="admin-tab" data-tab="waf" role="tab" aria-selected="false"><i class="ph ph-shield-warning"></i> Segurança</button>
   </nav>
 
   <!-- ═══════════════ MÉTRICAS ═══════════════ -->
@@ -402,6 +403,67 @@
           </thead>
           <tbody id="auditTableBody">
             <tr><td colspan="6">Carregando auditoria...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SEGURANÇA (WAF) ═══════════════ -->
+  <section class="admin-tabpanel" data-panel="waf">
+    <div class="admin-panel admin-waf-panel">
+      <div class="admin-panel-header">
+        <div>
+          <h2>Segurança — WAF</h2>
+          <p class="admin-panel-sub">WAF, CAPTCHA e OAuth Google. Contadores por processo/lambda; eventos persistidos em auditoria.</p>
+        </div>
+        <div class="admin-panel-filters">
+          <button class="btn btn-ghost btn-sm" id="refreshWafBtn">Atualizar</button>
+        </div>
+      </div>
+
+      <div class="admin-metrics-grid">
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-traffic-signal"></i></span><div><span>Requisições WAF</span><strong id="wafRequests">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-warning-circle"></i></span><div><span>Ameaças detectadas</span><strong id="wafDetected">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-prohibit-inset"></i></span><div><span>IPs bloqueados</span><strong id="wafBlockedIp">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-timer"></i></span><div><span>Rate-limitados</span><strong id="wafRateLimited">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-shield-check"></i></span><div><span>Bloqueios de segurança</span><strong id="securityBlocks">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-check-circle"></i></span><div><span>CAPTCHA válidos</span><strong id="captchaSuccesses">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-x-circle"></i></span><div><span>CAPTCHA falhos</span><strong id="captchaFailures">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-google-logo"></i></span><div><span>Logins Google</span><strong id="googleLogins">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-user-plus"></i></span><div><span>Registros Google</span><strong id="googleRegisters">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-swatches"></i></span><div><span>Contas criadas</span><strong id="googleUserCreated">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-crosshair"></i></span><div><span>Google ID mismatch</span><strong id="googleIdMismatch">—</strong></div></div>
+        <div class="metric-card"><span class="metric-icon"><i class="ph ph-bug"></i></span><div><span>Falhas Google</span><strong id="googleFailures">—</strong></div></div>
+      </div>
+
+      <div class="admin-waf-blocked">
+        <h3 class="admin-analytics-subtitle">IPs manualmente bloqueados (<code>WAF_BLOCKED_IPS</code>)</h3>
+        <div class="admin-waf-ips" id="wafBlockedIpsList">
+          <p class="admin-analytics-empty">Nenhum IP configurado.</p>
+        </div>
+      </div>
+
+      <div class="admin-waf-events">
+        <h3 class="admin-analytics-subtitle">Eventos de segurança nas últimas 24h</h3>
+        <div class="admin-waf-counts" id="wafEventCounts">
+          <p class="admin-analytics-empty">Sem eventos no período.</p>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <h3 class="admin-analytics-subtitle">Últimos eventos de segurança</h3>
+        <table class="admin-table admin-table--audit">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Ação</th>
+              <th>IP</th>
+              <th>Request ID</th>
+            </tr>
+          </thead>
+          <tbody id="wafEventsTableBody">
+            <tr><td colspan="4">Carregando eventos...</td></tr>
           </tbody>
         </table>
       </div>

@@ -43,6 +43,15 @@ function clearErrors() {
   document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
 }
 
+// ── CAPTCHA (reCAPTCHA v2 — opcional, depende de CAPTCHA_SITE_KEY) ──
+function captchaToken() {
+  return window.Captcha ? window.Captcha.getToken() : '';
+}
+
+function resetCaptcha() {
+  if (window.Captcha) window.Captcha.reset();
+}
+
 // ── Toggle Password ─────────────────────────────────────────
 
 document.querySelectorAll('.toggle-password').forEach(btn => {
@@ -108,12 +117,13 @@ if (loginForm) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, captchaToken: captchaToken() }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         showAlert(formError, data.message || 'Erro ao entrar. Tente novamente.');
+        resetCaptcha();
         return;
       }
 
@@ -166,12 +176,13 @@ if (registerForm) {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, confirmPassword, acceptedTerms: terms }),
+        body: JSON.stringify({ name, email, password, confirmPassword, acceptedTerms: terms, captchaToken: captchaToken() }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         showAlert(formError, data.message || 'Erro ao criar conta. Tente novamente.');
+        resetCaptcha();
         // Mapear erros de campo
         if (data.errors) {
           data.errors.forEach(err => {

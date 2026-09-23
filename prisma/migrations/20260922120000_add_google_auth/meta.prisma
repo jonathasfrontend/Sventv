@@ -1,0 +1,6 @@
+{
+  "name": "20260922120000_add_google_auth",
+  "prisma": "6.11.1",
+  "createdAt": "2026-09-22T16:00:00.000Z",
+  "description": "Add google_id and auth_provider for Google OAuth"
+}

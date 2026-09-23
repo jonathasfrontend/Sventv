@@ -48,6 +48,9 @@ router.get('/metrics/history', adminController.getHistoricMetricsSeries);
 router.post('/metrics/aggregate', adminController.runAggregation);
 router.get('/audit-logs', adminController.getAuditLogs);
 
+// Status consolidado do WAF/CAPTCHA/Google para o painel (GET → sem limiter).
+router.get('/waf', adminController.getWafStatus);
+
 // Exportações CSV (streaming com cursor). GET → fora do adminWriteLimiter.
 router.get('/export/analytics.csv', adminController.exportAnalyticsCSV);
 router.get('/export/audit-logs.csv', adminController.exportAuditLogsCSV);

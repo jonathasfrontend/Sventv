@@ -24,6 +24,14 @@ function setFieldError(inputId, errorId, message) {
   if (error) error.textContent = message || '';
 }
 
+function captchaToken() {
+  return window.Captcha ? window.Captcha.getToken() : '';
+}
+
+function resetCaptcha() {
+  if (window.Captcha) window.Captcha.reset();
+}
+
 const form = document.getElementById('forgotForm');
 if (form) {
   form.addEventListener('submit', async e => {
@@ -49,13 +57,14 @@ if (form) {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, captchaToken: captchaToken() }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         // Mensagem genérica (anti-enumeração) — a mesma para qualquer caso.
         showAlert(formError, data.message || 'Não foi possível concluir a solicitação.');
+        resetCaptcha();
         return;
       }
 

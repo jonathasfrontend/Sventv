@@ -852,6 +852,87 @@ const adminController = {
   },
 
   /**
+   * GET /admin/waf
+   *
+   * Status consolidado do WAF + CAPTCHA + OAuth Google para o painel:
+   * contadores (por lambda/processo), IPs bloqueados manualmente (env
+   * WAF_BLOCKED_IPS) e os eventos de segurança mais recentes persistidos
+   * em audit_logs (ações `security.*`, últimas 24h agregadas + últimos 50).
+   */
+  async getWafStatus(req, res, next) {
+    try {
+      const counters = metricsSnapshot().counters;
+
+      const blockedIps = (process.env.WAF_BLOCKED_IPS || '')
+        .split(',')
+        .map((ip) => ip.trim())
+        .filter(Boolean);
+
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const [recentEvents, grouped] = await Promise.all([
+        prisma.auditLog
+          .findMany({
+            where: { action: { startsWith: 'security.' } },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            select: {
+              id: true,
+              action: true,
+              ip: true,
+              userAgent: true,
+              requestId: true,
+              createdAt: true,
+            },
+          })
+          .catch(() => []),
+        prisma.auditLog
+          .groupBy({
+            by: ['action'],
+            where: {
+              action: { startsWith: 'security.' },
+              createdAt: { gte: since },
+            },
+            _count: { action: true },
+          })
+          .catch(() => []),
+      ]);
+
+      const eventCounts = {};
+      for (const g of grouped) {
+        eventCounts[g.action] = g._count.action;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          counters: {
+            wafRequests: counters.wafRequests,
+            wafDetected: counters.wafDetected,
+            wafBlockedIp: counters.wafBlockedIp,
+            wafRateLimited: counters.wafRateLimited,
+            securityBlocks: counters.securityBlocks,
+            captchaSuccesses: counters.captchaSuccesses,
+            captchaFailures: counters.captchaFailures,
+          },
+          google: {
+            login: counters['google.login'],
+            register: counters['google.register'],
+            userCreated: counters['google.userCreated'],
+            failures: counters['google.failure'],
+            idMismatch: counters['googleIdMismatch'],
+          },
+          blockedIps,
+          recentEvents,
+          eventCounts,
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
    * PUT /admin/channels/:channelId/state
    * Define o estado administrativo do canal (live | maintenance | blocked).
    * Aplicado em memória e sincronizado no objeto do canal; o gating de

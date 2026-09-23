@@ -923,6 +923,102 @@ function renderLiveControl(liveControl) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  SEGURANÇA (WAF) — contadores, IPs bloqueados e eventos
+// ════════════════════════════════════════════════════════════
+
+const wafCountersEls = {
+  wafRequests:      document.getElementById('wafRequests'),
+  wafDetected:      document.getElementById('wafDetected'),
+  wafBlockedIp:     document.getElementById('wafBlockedIp'),
+  wafRateLimited:   document.getElementById('wafRateLimited'),
+  securityBlocks:   document.getElementById('securityBlocks'),
+  captchaSuccesses: document.getElementById('captchaSuccesses'),
+  captchaFailures:  document.getElementById('captchaFailures'),
+  googleLogins:     document.getElementById('googleLogins'),
+  googleRegisters:  document.getElementById('googleRegisters'),
+  googleUserCreated: document.getElementById('googleUserCreated'),
+  googleIdMismatch: document.getElementById('googleIdMismatch'),
+  googleFailures:   document.getElementById('googleFailures'),
+};
+const wafBlockedIpsList = document.getElementById('wafBlockedIpsList');
+const wafEventCounts = document.getElementById('wafEventCounts');
+const wafEventsTableBody = document.getElementById('wafEventsTableBody');
+
+const WAF_ACTION_LABELS = {
+  'security.sql_injection.detected': 'SQL injection detectada',
+  'security.xss.detected': 'XSS detectado',
+  'security.path_traversal.detected': 'Path traversal',
+  'security.ssrf.blocked': 'SSRF bloqueado',
+  'security.idor.denied': 'IDOR negado',
+  'security.rate_limit.exceeded': 'Rate limit excedido',
+  'security.auth.bruteforce': 'Bruteforce detectado',
+  'security.route.enumeration': 'Enumeração de rotas',
+  'security.suspicious.payload': 'Payload suspeito',
+};
+
+function wafActionLabel(action) {
+  return WAF_ACTION_LABELS[action] || action || '—';
+}
+
+function renderWaf(data) {
+  const c = data?.counters || {};
+  const g = data?.google || {};
+  const set = (key, value) => {
+    const el = wafCountersEls[key];
+    if (el) el.textContent = value ?? '—';
+  };
+  set('wafRequests', c.wafRequests ?? '—');
+  set('wafDetected', c.wafDetected ?? '—');
+  set('wafBlockedIp', c.wafBlockedIp ?? '—');
+  set('wafRateLimited', c.wafRateLimited ?? '—');
+  set('securityBlocks', c.securityBlocks ?? '—');
+  set('captchaSuccesses', c.captchaSuccesses ?? '—');
+  set('captchaFailures', c.captchaFailures ?? '—');
+  set('googleLogins', g.login ?? '—');
+  set('googleRegisters', g.register ?? '—');
+  set('googleUserCreated', g.userCreated ?? '—');
+  set('googleIdMismatch', g.idMismatch ?? '—');
+  set('googleFailures', g.failures ?? '—');
+
+  const ips = data?.blockedIps || [];
+  if (wafBlockedIpsList) {
+    wafBlockedIpsList.innerHTML = ips.length
+      ? ips.map(ip => `<span class="admin-waf-ip">${escapeHtml(ip)}</span>`).join('')
+      : '<p class="admin-analytics-empty">Nenhum IP configurado.</p>';
+  }
+
+  const counts = data?.eventCounts || {};
+  const countEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (wafEventCounts) {
+    wafEventCounts.innerHTML = countEntries.length
+      ? countEntries.map(([action, count]) => `
+          <span class="admin-waf-count">
+            <strong>${count}</strong>
+            ${escapeHtml(wafActionLabel(action))}
+          </span>`).join('')
+      : '<p class="admin-analytics-empty">Sem eventos no período.</p>';
+  }
+
+  const events = data?.recentEvents || [];
+  if (wafEventsTableBody) {
+    wafEventsTableBody.innerHTML = events.length
+      ? events.map(e => `
+          <tr>
+            <td>${escapeHtml(formatDateTime(e.createdAt))}</td>
+            <td>${escapeHtml(wafActionLabel(e.action))}</td>
+            <td><code>${escapeHtml(e.ip || '—')}</code></td>
+            <td><code>${escapeHtml((e.requestId || '').slice(0, 16) || '—')}</code></td>
+          </tr>`).join('')
+      : '<tr><td colspan="4">Sem eventos de segurança.</td></tr>';
+  }
+}
+
+async function loadWaf() {
+  const json = await apiGet('/api/admin/waf');
+  renderWaf(json.data);
+}
+
+// ════════════════════════════════════════════════════════════
 //  ANALYTICS (agregados de reprodução persistidos)
 // ════════════════════════════════════════════════════════════
 
@@ -1203,6 +1299,8 @@ function activateTab(name) {
     loadUsers().catch(() => {});
   } else if (name === 'audit') {
     loadAudit().catch(() => {});
+  } else if (name === 'waf') {
+    loadWaf().catch(() => {});
   }
 }
 
@@ -1223,6 +1321,7 @@ async function refreshAll() {
     Promise.resolve(loadAudit()).catch(err => showAlert('Falha ao carregar auditoria: ' + err.message)),
     Promise.resolve(loadAnalytics()).catch(err => showAlert('Falha ao carregar analytics: ' + err.message)),
     Promise.resolve(loadUserMetrics()).catch(err => showAlert('Falha ao carregar métricas de usuários: ' + err.message)),
+    Promise.resolve(loadWaf()).catch(err => showAlert('Falha ao carregar segurança (WAF): ' + err.message)),
   ]);
 }
 
@@ -1250,6 +1349,7 @@ bindLoadButton(refreshMetricsBtn, () => loadMetrics().catch(err => showAlert(err
 bindLoadButton(loadAnalyticsBtn, () => loadAnalytics().catch(err => showAlert(err.message)));
 bindLoadButton(loadUserMetricsBtn, () => loadUserMetrics().catch(err => showAlert(err.message)));
 bindLoadButton(loadAuditBtn, () => loadAudit().catch(err => showAlert(err.message)));
+bindLoadButton(refreshWafBtn, () => loadWaf().catch(err => showAlert(err.message)));
 bindDownloadButton(document.getElementById('exportAnalyticsBtn'), exportAnalyticsCsv);
 bindDownloadButton(document.getElementById('exportAuditBtn'), exportAuditCsv);
 analyticsPeriod?.addEventListener('change', () => loadAnalytics().catch(err => showAlert(err.message)));
@@ -1329,6 +1429,7 @@ function startRealtimeAdmin() {
       if (tab === 'channels') await loadChannels().catch(() => {});
       if (tab === 'users') await loadUsers().catch(() => {});
       if (tab === 'audit') await loadAudit().catch(() => {});
+      if (tab === 'waf') await loadWaf().catch(() => {});
       if (tab === 'metrics' && (analyticsPeriod?.value || 'today') === 'today') {
         await loadAnalytics(true).catch(() => {});
       }

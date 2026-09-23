@@ -62,6 +62,8 @@ async function apiFetchUser(endpoint, options = {}) {
 
 /* ── Elementos ──────────────────────────────────────────── */
 const createForm       = document.getElementById('createPlaylistForm');
+const openCreateOverlayBtn = document.getElementById('openCreateOverlayBtn');
+const createOverlay        = document.getElementById('createOverlay');
 const createSubmitBtn  = document.getElementById('createPlaylistSubmit');
 const newPlaylistName  = document.getElementById('newPlaylistName');
 const newPlaylistDesc  = document.getElementById('newPlaylistDescription');
@@ -158,6 +160,9 @@ async function loadPlaylists(silent) {
 
     playlistsList.innerHTML = items.map(p => `
       <div class="playlist-card" data-playlist-id="${esc(p.id)}">
+        <div class="playlist-card-logos" aria-hidden="true">
+${(p.previewLogos || []).map(l => `<img class="pcard-logo pcard-logo-stack" src="${esc(l)}" alt="" loading="lazy" onerror="this.style.display='none'">`).join('')}
+        </div>
         <div class="playlist-card-body">
           <h3 class="playlist-card-name">${esc(p.name)}</h3>
           <p class="playlist-card-desc">${esc(p.description || 'Sem descrição')}</p>
@@ -306,6 +311,22 @@ document.addEventListener('keydown', (e) => {
 });
 
 loadPlaylists();
+ 
+/* ---- Overlay: criar playlist ---- */
+function openCreateOverlay() {
+  createOverlay.hidden = false;
+  createAlert.hidden = true;
+  newNameError.textContent = '';
+  newPlaylistName.value = '';
+  newPlaylistDesc.value = '';
+  setTimeout(() => newPlaylistName.focus(), 50);
+}
+function closeCreateOverlay() { createOverlay.hidden = true; }
+openCreateOverlayBtn.addEventListener('click', openCreateOverlay);
+document.querySelectorAll('[data-overlay-close]').forEach((el) =>
+  el.addEventListener('click', closeCreateOverlay));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCreateOverlay(); });
+
 
 // Realtime: atualiza a lista periodicamente sem sobrepor requisições.
 // Se um detalhe estiver aberto, ele é recarregado silenciosamente (sem

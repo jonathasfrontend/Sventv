@@ -17,6 +17,10 @@ const userRepository = {
     return prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   },
 
+  async findByGoogleId(googleId) {
+    return prisma.user.findUnique({ where: { googleId } });
+  },
+
   async findByApiToken(apiToken) {
     return prisma.user.findUnique({ where: { apiToken } });
   },

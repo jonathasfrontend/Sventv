@@ -19,6 +19,7 @@ const session = require('express-session');
 const config = require('./config/app');
 const routes = require('./routes');
 const webRoutes = require('./routes/webRoutes');
+const googleRoutes = require('./routes/googleRoutes');
 const M3UService = require('./services/m3uService');
 const ChannelStateService = require('./services/channelStateService');
 const ChannelHealthService = require('./services/channelHealthService');
@@ -27,6 +28,7 @@ const { errorHandler, notFound, requestLogger } = require('./middlewares/errorHa
 const { globalLimiter } = require('./middlewares/rateLimiter');
 const requestId = require('./middlewares/requestId');
 const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = require('./middlewares/security');
+const { monitorRequests, trackBehavior } = require('./middlewares/waf');
 
 const app = express();
 
@@ -51,6 +53,9 @@ app.use(
   helmet({
     contentSecurityPolicy: false,
     frameguard: false,
+    strictTransportSecurity: !config.isDev ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    permissionsPolicy: { features: { fullscreen: ['self'], pictureInPicture: ['self'] } },
   })
 );
 app.use(
@@ -61,6 +66,9 @@ app.use(
     credentials: true,
   })
 );
+
+app.use(monitorRequests);
+app.use(trackBehavior);
 
 // ── Rate Limit + Logging ─────────────────────────────────────
 

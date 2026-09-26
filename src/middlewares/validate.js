@@ -5,6 +5,20 @@ const { exceedsBcryptLimit } = require('../utils/passwordPolicy');
 
 const PASSWORD_BYTES = 72;
 
+// Avatar = URL externa HTTPS (migração v2.0.1): sem upload de arquivo.
+// O schema é a primeira barreira; o avatarService.validaAvatarUrl é a
+// autoridade (esquemas perigosos, credenciais, host público via SSRF).
+// '' = limpar o avatar personalizado (volta ao Google, se houver).
+const avatarUrl = Joi.string()
+  .uri({ scheme: ['https'] })
+  .max(2048)
+  .allow('')
+  .messages({
+    'string.uri': 'Informe uma URL HTTPS válida para o avatar.',
+    'string.uriCustomScheme': 'Use apenas URLs HTTPS para o avatar.',
+    'string.max': 'A URL do avatar deve ter no máximo 2048 caracteres.',
+  });
+
 const schemas = {
   register: Joi.object({
     name: Joi.string().trim().min(2).max(80).required().messages({
@@ -53,8 +67,7 @@ const schemas = {
         'any.custom': 'Você deve aceitar os Termos de Uso para criar uma conta.',
         'any.required': 'Você deve aceitar os Termos de Uso.',
       }),
-    avatar: Joi.string().uri().max(500).allow('').optional(),
-    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
+    avatar: avatarUrl.optional(),
   }),
 
   login: Joi.object({
@@ -65,12 +78,11 @@ const schemas = {
     password: Joi.string().min(1).max(128).required().messages({
       'any.required': 'A senha é obrigatória.',
     }),
-    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   updateProfile: Joi.object({
     name: Joi.string().trim().min(2).max(80).optional(),
-    avatar: Joi.string().uri().max(500).allow('').optional(),
+    avatar: avatarUrl.optional(),
   }).min(1),
 
   changePassword: Joi.object({
@@ -104,7 +116,6 @@ const schemas = {
       'string.email': 'Informe um e-mail válido.',
       'any.required': 'O e-mail é obrigatório.',
     }),
-    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   resetPassword: Joi.object({
@@ -143,7 +154,6 @@ const schemas = {
         'any.only': 'As senhas não coincidem.',
         'any.required': 'A confirmação de senha é obrigatória.',
       }),
-    captchaToken: Joi.string().trim().max(20000).allow('').optional(),
   }),
 
   adminChangeRole: Joi.object({
@@ -151,8 +161,9 @@ const schemas = {
   }),
 
   // Admin — atualização de perfil de outro usuário (whitelist explícita:
-  // nome e e-mail. NUNCA aceita role/status/password/avatar por aqui —
-  // mass assignment bloqueado por schema + stripUnknown do middleware).
+  // nome, e-mail e avatar (URL externa HTTPS). NUNCA aceita role/status/
+  // password por aqui — mass assignment bloqueado por schema +
+  // stripUnknown do middleware).
   adminUpdateProfile: Joi.object({
     name: Joi.string().trim().min(2).max(80).optional().messages({
       'string.min': 'O nome deve ter pelo menos 2 caracteres.',
@@ -162,6 +173,7 @@ const schemas = {
       'string.email': 'Informe um e-mail válido.',
       'string.max': 'O e-mail deve ter no máximo 254 caracteres.',
     }),
+    avatar: avatarUrl.optional(),
   }).min(1),
 
   // Admin — redefinição de senha de outro usuário (não exige a senha atual
@@ -207,6 +219,25 @@ const schemas = {
   adminBlockUser: Joi.object({
     blocked: Joi.boolean().required(),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
+  }),
+
+  // Admin — bloqueio de IP (WAF). `ip` é opcional (ou pertence ao alvo — o
+  // controller valida a pertença); `confirmSelfBlock` protege o próprio IP
+  // do admin. A validação de IP aceita IPv4 e IPv6.
+  adminWafBlock: Joi.object({
+    ip: Joi.string().ip({ version: ['ipv4', 'ipv6'] }).trim().max(64).optional().messages({
+      'string.ipVersion': 'Informe um endereço de IP válido (IPv4 ou IPv6).',
+    }),
+    reason: Joi.string().trim().max(200).allow('', null).optional().messages({
+      'string.max': 'O motivo deve ter no máximo 200 caracteres.',
+    }),
+    confirmSelfBlock: Joi.boolean().optional(),
+  }),
+
+  adminWafUnblock: Joi.object({
+    ip: Joi.string().ip({ version: ['ipv4', 'ipv6'] }).trim().max(64).optional().messages({
+      'string.ipVersion': 'Informe um endereço de IP válido (IPv4 ou IPv6).',
+    }),
   }),
 
   adminChannelState: Joi.object({

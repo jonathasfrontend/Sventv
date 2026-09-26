@@ -7,7 +7,11 @@
  *   - request_usage  → buckets de rate limit por usuário (granularidade
  *                      alta; só precisa existir por alguns dias);
  *   - audit_logs     → trilha de auditoria admin/login/playback (obrigação
- *                      de compliance; retenção maior que a de uso).
+ *                      de compliance; retenção maior que a de uso);
+ *   - ip_blocklist   → histórico de IPs JÁ DESBLOQUEADOS (active=false) —
+ *                      a decisão viva de bloqueio NUNCA é apagada; quando
+ *                      IP_BLOCKLIST_RETENTION_DAYS > 0, só expira o histórico
+ *                      de desbloqueios antigos (o registro ativo permanece).
  *
  * Disparo: cron da Vercel (POST /api/internal/retention/run) e/ou manual via
  * POST /api/admin/retention/run. Beleza operacional: os deletes usam índices
@@ -28,12 +32,12 @@ const DAY_MS = 86400_000;
 
 /**
  * Apaga dados operacionais vencidos.
- * @returns {Promise<{requestUsageDeleted: number, auditLogsDeleted: number}>}
+ * @returns {Promise<{requestUsageDeleted: number, auditLogsDeleted: number, ipBlocklistDeleted: number}>}
  * @throws {Error} em falha de banco (o chamador decide a resposta)
  */
 async function runRetention() {
   const now = Date.now();
-  const out = { requestUsageDeleted: 0, auditLogsDeleted: 0 };
+  const out = { requestUsageDeleted: 0, auditLogsDeleted: 0, ipBlocklistDeleted: 0 };
 
   inc('retentionRuns');
 
@@ -56,8 +60,21 @@ async function runRetention() {
     out.auditLogsDeleted = (res && res.count) || 0;
   }
 
+  // ip_blocklist: somente histórico já DESBLOQUEADO e mais antigo que o
+  // corte. IPs com bloqueio ATIVO nunca são tocados (segurança > retenção).
+  // 0 desativa (padrão) — manter histórico de desbloqueios é aceitável e a
+  // trilha administrativa completa continua no audit_logs.
+  if (config.ipAccess.retentionDays > 0) {
+    const cutoff = new Date(now - config.ipAccess.retentionDays * DAY_MS);
+    const res = await prisma.ipBlocklist.deleteMany({
+      where: { active: false, unblockedAt: { not: null, lt: cutoff } },
+    });
+    out.ipBlocklistDeleted = (res && res.count) || 0;
+  }
+
   inc('retentionRequestUsageDeleted', out.requestUsageDeleted);
   inc('retentionAuditLogsDeleted', out.auditLogsDeleted);
+  inc('ipBlocklistRetentionDeleted', out.ipBlocklistDeleted);
 
   return out;
 }

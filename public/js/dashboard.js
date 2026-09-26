@@ -100,11 +100,7 @@ const playlistList   = document.getElementById('playlistList');
 const recoBlock      = document.getElementById('recoBlock');
 const recoList       = document.getElementById('recoList');
 
-// Tendências (Top 10 do catálogo — filmes / séries / ao vivo)
-const trendingMoviesBlock    = document.getElementById('trendingMoviesBlock');
-const trendingMoviesList     = document.getElementById('trendingMoviesList');
-const trendingSeriesBlock    = document.getElementById('trendingSeriesBlock');
-const trendingSeriesList     = document.getElementById('trendingSeriesList');
+// Tendências (programações ao vivo em alta)
 const trendingChannelsBlock  = document.getElementById('trendingChannelsBlock');
 const trendingChannelsList   = document.getElementById('trendingChannelsList');
 
@@ -496,53 +492,40 @@ function renderRecommendations(payload) {
   initCarousel(recoBlock);
 }
 
-// ── Tendências (Top 10 do catálogo) ─────────────────────────
+// ── Tendências ("Ao vivo em alta") ────────────────────────────
 // Cards somente exibição: o catálogo não pertence ao grid SvenTV,
 // então não abrem player nem navegam. Falha/ausência de dados
 // apenas mantém a seção oculta (fail-open do backend + frontend).
-function trendingPosterCard(item) {
-  const img = item.image
-    ? `<img class="tcard-img" src="${escapeHtml(item.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
-    : `<div class="tcard-img tcard-img--fallback">${escapeHtml((item.title || '?').charAt(0))}</div>`;
-  const meta = [item.rating, item.runTime].filter(Boolean).join(' • ');
+function trendingThumb(image, initial) {
+  // O fallback (inicial do canal) fica SEMPRE no DOM, atrás do <img>
+  // absoluto; se a imagem falhar, `onerror` a remove e a inicial aparece.
+  //
+  // `referrerpolicy="no-referrer"` é OBRIGATÓRIO: o CDN do provedor
+  // (getcdn.nowonline.com.br) tem proteção anti-hotlink e responde 403 a
+  // QUALQUER requisição que carregue o header Referer — inclusive o do
+  // próprio domínio. O browser envia Referer por padrão, então sem isso
+  // nenhuma arte carrega.
+  const photo = image
+    ? `<img class="tcard-img tcard-img--photo" src="${escapeHtml(image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : '';
   return `
-    <div class="pcard pcard-static pcard--poster">
-      ${img}
-      <div class="pcard-body">
-        <span class="pcard-name">${escapeHtml(item.title || 'Sem título')}</span>
-        ${meta ? `<span class="pcard-cat">${escapeHtml(meta)}</span>` : ''}
-      </div>
-    </div>`;
+    <span class="tcard-thumb">
+      <span class="tcard-img tcard-img--fallback" aria-hidden="true">${escapeHtml(initial)}</span>
+      ${photo}
+    </span>`;
 }
 
 function trendingChannelCard(ch) {
   const name = ch.name || ch.channelName || 'Canal';
-  const logo = ch.logo
-    ? `<img class="pcard-logo" src="${escapeHtml(ch.logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`
-    : `<div class="pcard-logo pcard-logo-fallback">${escapeHtml(name.charAt(0))}</div>`;
   return `
-    <div class="pcard pcard-static">
-      ${logo}
+    <div class="pcard pcard-static pcard--live">
+      ${trendingThumb(ch.image, (ch.channelName || name).charAt(0).toUpperCase())}
       <div class="pcard-body">
         <span class="pcard-name">${escapeHtml(name)}</span>
-        <span class="pcard-cat">${escapeHtml(ch.genre || ch.genreCategory || 'Ao vivo')}</span>
-        ${ch.shortName ? `<span class="pcard-extra">${escapeHtml(ch.shortName)}</span>` : ''}
+        <span class="pcard-cat">${escapeHtml(ch.channelName || ch.genre || ch.genreCategory || 'Ao vivo')}</span>
+        ${ch.genre ? `<span class="pcard-extra">${escapeHtml(ch.genre)}</span>` : ''}
       </div>
     </div>`;
-}
-
-function renderTrendingMovies(movies) {
-  if (!movies || !movies.length) return;
-  trendingMoviesBlock.hidden = false;
-  trendingMoviesList.innerHTML = movies.map(trendingPosterCard).join('');
-  initCarousel(trendingMoviesBlock);
-}
-
-function renderTrendingSeries(series) {
-  if (!series || !series.length) return;
-  trendingSeriesBlock.hidden = false;
-  trendingSeriesList.innerHTML = series.map(trendingPosterCard).join('');
-  initCarousel(trendingSeriesBlock);
 }
 
 function renderTrendingChannels(channels) {
@@ -556,11 +539,9 @@ async function loadTrending() {
   try {
     const json = await apiFetchUser('/api/trending');
     const data = json.data || {};
-    renderTrendingMovies(data.movies);
-    renderTrendingSeries(data.series);
     renderTrendingChannels(data.channels);
   } catch (err) {
-    // Falha silenciosa: os carrosséis de tendências ficam ocultos.
+    // Falha silenciosa: o carrossel de "Ao vivo em alta" fica oculto.
     console.warn('loadTrending:', err.message);
   }
 }

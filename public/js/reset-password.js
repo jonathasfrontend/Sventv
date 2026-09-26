@@ -29,14 +29,6 @@ function clearErrors() {
   document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
 }
 
-function captchaToken() {
-  return window.Captcha ? window.Captcha.getToken() : '';
-}
-
-function resetCaptcha() {
-  if (window.Captcha) window.Captcha.reset();
-}
-
 document.querySelectorAll('.toggle-password').forEach(btn => {
   btn.addEventListener('click', () => {
     const input = document.getElementById(btn.dataset.target);
@@ -75,13 +67,12 @@ if (form) {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code, newPassword, confirmPassword, captchaToken: captchaToken() }),
+        body: JSON.stringify({ email, code, newPassword, confirmPassword }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         showAlert(formError, data.message || 'Não foi possível redefinir a senha.');
-        resetCaptcha();
         if (data.errors) {
           data.errors.forEach(err => {
             if (err.field === 'email') setFieldError('email', 'emailError', err.message);

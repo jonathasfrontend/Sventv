@@ -14,13 +14,15 @@ class M3UService {
     this.m3uFiles = [
       
       // ── URLs externas (ativas) ────────────────────────────────
-      './SvenTvChannelsBACKUP.m3u'
+      './ugth6122_plus.m3u'
 
     ];
+    // Revisão da lista: fingerprint do CONTEÚDO (não um contador) — é o que
+    // alimenta o ETag de /api/channels. Precisa existir ANTES do load, senão
+    // um load síncrono (arquivo local, sem await) sobrescreve o valor.
+    this.version = '';
     // Carrega os canais de forma assíncrona (suporta download de URLs)
     this.loadPromise = this.loadChannels();
-    // Revisão da lista: incrementa a cada (re)carga — alimenta ETags.
-    this.version = 0;
   }
 
   /**
@@ -51,6 +53,9 @@ class M3UService {
    * O arquivo já foi processado pelo filtro M3U que mantém apenas canais FHD válidos
    */
   async loadChannels() {
+    // Recarrega do zero: sem isto, qualquer reentrada (ensureLoaded/reload)
+    // faria append e a lista viraria uma mistura de antigo + novo.
+    this.channels = [];
     let totalChannels = 0;
     let loadedFiles = 0;
 
@@ -67,7 +72,7 @@ class M3UService {
         } else {
           if (!fs.existsSync(source)) {
             console.log(`⚠️  Arquivo não encontrado: ${path.basename(source)}`);
-            console.log('💡 Certifique-se de que o arquivo SvenTvChannelsBACKUP.m3u está na raiz do projeto');
+            console.log(`💡 O caminho "${source}" é relativo ao diretório de trabalho (${process.cwd()}). Confira se o arquivo existe lá.`);
             continue;
           }
           m3uContent = fs.readFileSync(source, 'utf-8');
@@ -93,9 +98,32 @@ class M3UService {
     this.removeDuplicates();
 
     // Nova revisão da lista — invalida ETags emitidas com o conteúdo antigo.
-    this.version += 1;
+    this.version = this._fingerprint();
 
     console.log(`🔄 Após remoção de duplicatas: ${this.channels.length} canais únicos`);
+  }
+
+  /**
+   * Fingerprint do CONTEÚDO da lista (fonte + id/nome de cada canal).
+   *
+   * Deliberadamente NÃO é um contador: um contador reinicia a cada processo,
+   * então duas playlists diferentes em dois deploys produziam o MESMO valor e
+   * o ETag de /api/channels colidia — o cliente recebia 304 e reaplicava a
+   * lista antiga em cache. Derivando do conteúdo, qualquer troca de arquivo
+   * invalida o ETag, inclusive entre lambdas distintas.
+   *
+   * Só o digest sai daqui: nem o caminho local nem a URL remota (que podem ser
+   * segredo operacional, como EPG_URL) aparecem em claro no valor.
+   *
+   * @returns {string} hex de 32 caracteres
+   */
+  _fingerprint() {
+    const h = crypto.createHash('sha256');
+    h.update(this.m3uFiles.join('\u0000'));
+    for (const ch of this.channels) {
+      h.update('\u0001').update(ch.id).update('\u0000').update(ch.name || '');
+    }
+    return h.digest('hex').slice(0, 32);
   }
 
   /**
@@ -357,12 +385,12 @@ class M3UService {
   }
 
   /**
-   * Revisão da lista processada (incrementada a cada load/reload).
-   * Usada para computar ETags — a lista vira outro recurso quando muda.
-   * @returns {number}
+   * Fingerprint do conteúdo da lista processada (ver `_fingerprint`).
+   * Usado para computar ETags — a lista vira outro recurso quando muda.
+   * @returns {string} hex de 32 caracteres (vazio antes do primeiro load)
    */
   getVersion() {
-    return this.version || 0;
+    return this.version || '';
   }
 
   /**

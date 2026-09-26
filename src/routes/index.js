@@ -44,7 +44,7 @@ router.use('/admin', adminRoutes);
 // Área pessoal (dashboard, histórico, playlists, recomendações)
 router.use('/', userRoutes);
 
-// Tendências (Top 10 — filmes/séries/programações em alta)
+// Tendências (programações ao vivo em alta)
 router.use('/trending', trendingRoutes);
 
 // Ingestão de eventos de playback (transições + heartbeat)

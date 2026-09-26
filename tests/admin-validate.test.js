@@ -33,6 +33,15 @@ test('adminUpdateProfile: exige ao menos um campo válido', () => {
   assert.ok(fail({ name: 'A' }, 'adminUpdateProfile'));
 });
 
+test('adminUpdateProfile: avatar apenas como URL HTTPS ou vazio (migração v2.0.1)', () => {
+  assert.ok(!fail({ avatar: 'https://cdn.example.com/a.png' }, 'adminUpdateProfile'));
+  assert.ok(!fail({ avatar: '' }, 'adminUpdateProfile'));
+  assert.ok(fail({ avatar: 'http://cdn.example.com/a.png' }, 'adminUpdateProfile'));
+  assert.ok(fail({ avatar: 'javascript:alert(1)' }, 'adminUpdateProfile'));
+  assert.ok(fail({ avatar: 'data:image/png;base64,x' }, 'adminUpdateProfile'));
+  assert.ok(fail({ avatar: `https://cdn.example.com/${'x'.repeat(3000)}` }, 'adminUpdateProfile'));
+});
+
 test('adminChangePassword: exige política de senha e confirmação idêntica', () => {
   const good = { newPassword: 'SenhaForte123', confirmPassword: 'SenhaForte123' };
   assert.ok(!fail(good, 'adminChangePassword'));

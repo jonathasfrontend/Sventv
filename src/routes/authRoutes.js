@@ -13,15 +13,16 @@
 'use strict';
 
 const { Router } = require('express');
-const multer = require('multer');
 const authController = require('../controllers/authController');
 const { requireSessionAuth } = require('../middlewares/auth');
 const { loginLimiter, registerLimiter, forgotPasswordLimiter, resetPasswordLimiter } = require('../middlewares/rateLimiter');
 const { validate } = require('../middlewares/validate');
-const verifyCaptcha = require('../middlewares/captcha');
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Observação de arquitetura: LOGIN e CADASTRO Google NÃO seguem por aqui.
+// O fluxo "intenção explícita" vive em `/api/google/*` (googleRoutes.js) —
+// login do Google NUNCA cria conta; cadastro é endpoint dedicado.
 
 // ── Rotas públicas ────────────────────────────────────────────
 
@@ -29,7 +30,6 @@ router.post(
   '/register',
   registerLimiter,
   validate('register'),
-  verifyCaptcha,
   authController.register
 );
 
@@ -37,15 +37,8 @@ router.post(
   '/login',
   loginLimiter,
   validate('login'),
-  verifyCaptcha,
   authController.login
 );
-
-router.get('/google/url', authController.getGoogleAuthUrl);
-router.post('/google/callback', validate('googleCallback'), authController.googleCallback);
-router.post('/google/login', loginLimiter, validate('googleLogin'), authController.googleLogin);
-router.post('/google/register', registerLimiter, validate('googleRegister'), authController.googleRegister);
-router.post('/google/state', authController.generateGoogleState);
 
 // ── Recuperação de senha (públicas) ───────────────────────────
 
@@ -53,7 +46,6 @@ router.post(
   '/forgot-password',
   forgotPasswordLimiter,
   validate('forgotPassword'),
-  verifyCaptcha,
   authController.forgotPassword
 );
 
@@ -61,7 +53,6 @@ router.post(
   '/reset-password',
   resetPasswordLimiter,
   validate('resetPassword'),
-  verifyCaptcha,
   authController.resetPassword
 );
 
@@ -92,7 +83,7 @@ router.get('/api-token', requireSessionAuth, authController.revealApiToken);
 
 /**
  * @route  PUT /auth/profile
- * @desc   Atualiza nome e/ou avatar
+ * @desc   Atualiza nome e/ou avatar (URL externa HTTPS; avatar:'' limpa)
  * @access Privado
  */
 router.put(
@@ -100,18 +91,6 @@ router.put(
   requireSessionAuth,
   validate('updateProfile'),
   authController.updateProfile
-);
-
-/**
- * @route  POST /auth/avatar
- * @desc   Upload do avatar (arquivo ou URL remota)
- * @access Privado
- */
-router.post(
-  '/avatar',
-  requireSessionAuth,
-  upload.single('avatar'),
-  authController.uploadAvatar
 );
 
 /**

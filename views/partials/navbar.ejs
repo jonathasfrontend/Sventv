@@ -28,7 +28,7 @@
       <% if (user) { %>
         <a href="/profile" class="btn-avatar" title="Meu perfil">
           <% if (user.avatar) { %>
-            <img src="<%= user.avatar %>" alt="Avatar" class="avatar-img">
+            <img src="<%= user.avatar %>" alt="Avatar" class="avatar-img" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=&quot;avatar-initials&quot;><%= user.name.charAt(0).toUpperCase() %></span>'">
           <% } else { %>
             <span class="avatar-initials"><%= user.name.charAt(0).toUpperCase() %></span>
           <% } %>

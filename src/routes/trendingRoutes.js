@@ -15,22 +15,10 @@ const guard = [requireSessionOrApi, userLimiter];
 
 /**
  * @route GET /api/trending
- * @desc  Filmes + séries + programações ao vivo em alta (carrosséis da dashboard)
+ * @desc  Programações ao vivo em alta (carrossel "Ao vivo em alta" da dashboard)
  * @access Privado — session OU API token
  */
 router.get('/', ...guard, trendingController.list);
-
-/**
- * @route GET /api/trending/movies
- * @desc  Top 10 filmes mais assistidos (period: 7)
- */
-router.get('/movies', ...guard, trendingController.getMovies);
-
-/**
- * @route GET /api/trending/series
- * @desc  Top 10 séries mais assistidas (period: 7)
- */
-router.get('/series', ...guard, trendingController.getSeries);
 
 /**
  * @route GET /api/trending/channels

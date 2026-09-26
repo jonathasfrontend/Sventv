@@ -352,6 +352,7 @@
   // ==================== MÓDULO: HLS ====================
   const HLSModule = {
     MAX_AUTO_RETRIES: 2,
+    MAX_RATE_LIMIT_RETRIES: 3,
 
     detectStreamType(url) {
       const format = (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.format) || '';
@@ -402,7 +403,10 @@
       this._currentUrl = url || this._currentUrl || CHANNEL_DATA.url;
       state.streamType = this.detectStreamType(this._currentUrl);
       this.destroy();
-      if (!isRecovery) this.recoveryAttempts = 0;
+      if (!isRecovery) {
+        this.recoveryAttempts = 0;
+        this.rateLimitAttempts = 0;
+      }
 
       if (state.streamType === 'hls') {
         if (typeof Hls !== 'undefined' && Hls.isSupported()) {
@@ -416,6 +420,7 @@
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             state.levels = hls.levels;
             this.recoveryAttempts = 0;
+            this.rateLimitAttempts = 0;
             UIModule.showLiveBadge();
             UIModule.hideLoading();
             video.play().catch(() => {});
@@ -461,7 +466,7 @@
         return this._showFatal('Acesso negado', 'O servidor bloqueou o acesso ao conteúdo (403).');
       }
       if (code === 429) {
-        return this._showFatal('Limite de streams atingido', 'Você já tem o número máximo de streams abertos nesta conta. Feche outra aba/player e tente novamente.');
+        return this._handleRateLimited();
       }
 
       if (typeof code === 'number' && code >= 400) {
@@ -480,6 +485,27 @@
       this._showFatal('Erro de reprodução', 'Erro de rede. Tente novamente mais tarde.');
     },
 
+    /**
+     * 429 tem DUAS causas no servidor, indistinguíveis pelo hls.js (que expõe
+     * só o status, não o corpo da resposta):
+     *  - vaga de stream esgotada (streamLimiter) — exige fechar outra aba;
+     *  - rate limit de requisição (stream/proxy) — TRANSITÓRIO, some sozinho.
+     *
+     * Tratar as duas igual travava a sessão: `_showFatal` no primeiro 429
+     * matava o player do próprio usuário por um pico de segmentos. Agora damos
+     * backoff e só declaramos o limite de streams quando as tentativas também
+     * se esgotam — nesse caso a causa é de fato a vaga presa, porque rate limit
+     * puro se resolve antes disso.
+     */
+    _handleRateLimited() {
+      if (this.rateLimitAttempts < this.MAX_RATE_LIMIT_RETRIES) {
+        this.rateLimitAttempts++;
+        this._scheduleRecovery(1500 * this.rateLimitAttempts);
+        return;
+      }
+      return this._showFatal('Limite de streams atingido', 'Você já tem o número máximo de streams abertos nesta conta. Feche outra aba/player e tente novamente.');
+    },
+
     _scheduleRecovery(delayMs) {
       this.recoveryAttempts++;
       const url = this._currentUrl || (typeof CHANNEL_DATA !== 'undefined' && CHANNEL_DATA.url);
@@ -494,10 +520,12 @@
       const onMeta = () => {
         UIModule.hideLoading();
         this.recoveryAttempts = 0;
+        this.rateLimitAttempts = 0;
       };
       const onCanPlay = () => {
         UIModule.hideLoading();
         this.recoveryAttempts = 0;
+        this.rateLimitAttempts = 0;
       };
 
       video.removeEventListener('loadedmetadata', this._onNativeMeta);
@@ -1329,6 +1357,7 @@
         state.isPlaying = true;
         UIModule.updatePlayButton(true);
         HLSModule.recoveryAttempts = 0;
+        HLSModule.rateLimitAttempts = 0;
         if (AnalyticsModule) AnalyticsModule.trackStarted();
       });
 

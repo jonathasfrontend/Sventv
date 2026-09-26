@@ -655,7 +655,10 @@ class ChannelController {
 
       // Limite de streams simultâneos por usuário (apenas na requisição
       // inicial do player; segmentos têm rate limiter próprio e alto).
-      if (isInitialRequest && !(await acquireSlot(req))) {
+      // `lease` identifica o backend que concedeu a vaga — o release precisa
+      // desfazer exatamente onde o acquire somou (ver streamLimiter).
+      const lease = isInitialRequest ? await acquireSlot(req) : null;
+      if (isInitialRequest && !lease) {
         inc('streamRequests');
         return res.status(429).json({
           success: false,
@@ -663,13 +666,13 @@ class ChannelController {
         });
       }
 
-      if (isInitialRequest) {
+      if (lease) {
         // Incrementa no início do stream (bootstrap da requisição inicial)
         // e decrementa ao finalizar. O decremento em 'finish' + liberação
         // em 'close' são idempotentes (clamp em 0).
         snapActiveStream(1);
         res.once('finish', () => snapActiveStream(-1));
-        res.once('close', () => releaseSlot(req));
+        res.once('close', () => releaseSlot(lease));
       }
 
       // Alvo: canal principal (sem ?p) ou sub-recurso selado (?p=...)

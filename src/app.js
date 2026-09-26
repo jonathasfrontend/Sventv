@@ -23,12 +23,14 @@ const googleRoutes = require('./routes/googleRoutes');
 const M3UService = require('./services/m3uService');
 const ChannelStateService = require('./services/channelStateService');
 const ChannelHealthService = require('./services/channelHealthService');
+const IpBlocklistService = require('./services/ipBlocklistService');
 const { ensureDBConnection } = require('./config/database');
 const { errorHandler, notFound, requestLogger } = require('./middlewares/errorHandler');
 const { globalLimiter } = require('./middlewares/rateLimiter');
 const requestId = require('./middlewares/requestId');
 const { sanitizeMongo, sanitizeXss, removeFingerprint, securityLogger } = require('./middlewares/security');
 const { monitorRequests, trackBehavior } = require('./middlewares/waf');
+const { ipAccess } = require('./middlewares/ipAccess');
 
 const app = express();
 
@@ -45,6 +47,11 @@ app.set('trust proxy', 1);
 // ── Request ID (primeiro: disponível a todos os demais) ─────
 
 app.use(requestId);
+
+// ── IP Access Control (blocklist WAF, persistente) ───────────
+// Cobre páginas web (login/register) E /api. Pré-flight/saúde/assets ficam
+// acessíveis (ver src/middlewares/ipAccess.js). Fail-open por design.
+app.use(ipAccess);
 
 // ── Segurança ───────────────────────────────────────────────
 
@@ -143,6 +150,7 @@ app.use('/Player', express.static(path.join(__dirname, 'Player')));
 const sharedM3U = M3UService.getShared();
 const channelStates = ChannelStateService.getShared();
 const channelHealth = ChannelHealthService.getShared();
+const ipAccessService = IpBlocklistService.getShared();
 app.use((req, res, next) => {
   if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
     res.setHeader('Cache-Control', 'no-store');
@@ -164,6 +172,11 @@ app.use(async (_req, _res, next) => {
       // que os canais não "voltem" para a primária na primeira lambda fria.
       channelHealth.ensureLoaded().catch((e) => {
         console.error('Falha ao carregar failover de canais:', e.message);
+      }),
+      // Hidrata a blocklist de IPs (Postgres) no cold start, para que o gate
+      // de /api e páginas sirva 403 imediatamente (sem read-through por req).
+      ipAccessService.ensureLoaded().catch((e) => {
+        console.error('Falha ao carregar blocklist de IPs:', e.message);
       }),
     ]);
     // Espelha o estado persistido nos objetos M3U (`channel.state` alimenta

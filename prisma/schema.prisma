@@ -16,6 +16,7 @@ model User {
   email         String    @unique @db.VarChar(255)
   password      String
   avatar        String    @default("")
+  googleAvatarUrl String?  @map("google_avatar_url")
   googleId      String?   @unique @map("google_id")
   authProvider  String?   @default("local") @map("auth_provider") @db.VarChar(32)
   apiToken      String?   @unique @map("api_token")
@@ -26,6 +27,7 @@ model User {
   lockUntil     DateTime? @map("lock_until") @db.Timestamptz(6)
   lastLogin     DateTime? @map("last_login") @db.Timestamptz(6)
   lastLoginIp   String?   @map("last_login_ip") @db.VarChar(64)
+  registrationIp String?  @map("registration_ip") @db.VarChar(64)
   apiTokenVersion Int     @default(0) @map("api_token_version")
   apiTokenActive  Boolean @default(true) @map("api_token_active")
   sessionVersion  Int     @default(0) @map("session_version")
@@ -54,6 +56,7 @@ model User {
   @@index([createdAt], map: "users_created_at_idx")
   @@index([googleId], map: "users_google_id_idx")
   @@index([authProvider], map: "users_auth_provider_idx")
+  @@index([registrationIp], map: "users_registration_ip_idx")
   @@map("users")
 }
 
@@ -359,4 +362,28 @@ model UserMetric {
   @@unique([userId, date], map: "user_metrics_user_date_unique")
   @@index([date], map: "user_metrics_date_idx")
   @@map("user_metrics")
+}
+
+// ── WAF / IP Access Control (blocklist persistente) ──────────
+// Registra IPs bloqueados por decisão ADMINISTRATIVA (independente do
+// bloqueio de CONTA em `users.account_restricted`). Uma linha por IP: o
+// bloqueio é uma decisão sobre o endereço, não sobre o usuário — todos os
+// usuários que trafegarem por aquele IP (registro E login) são atingidos.
+// `active` marca o estado ATUAL (block = true; unblock = false mantém o
+// histórico); `blocked_by`/`unblocked_by` guardam o e-mail do admin que agiu.
+// `ip` é a chave natural (PK) — normalizada (IPv4-mapped IPv6 viram IPv4;
+// IPv6 minúsculas). Sem FK para `users`: IPs são compartilhados entre contas.
+model IpBlocklist {
+  ip          String    @id @db.VarChar(64)
+  reason      String    @default("") @db.VarChar(255)
+  blockedBy   String?   @map("blocked_by") @db.VarChar(255)
+  blockedAt   DateTime  @default(now()) @map("blocked_at") @db.Timestamptz(6)
+  unblockedBy String?   @map("unblocked_by") @db.VarChar(255)
+  unblockedAt DateTime? @map("unblocked_at") @db.Timestamptz(6)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([active], map: "ip_blocklist_active_idx")
+  @@map("ip_blocklist")
 }

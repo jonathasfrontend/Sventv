@@ -584,30 +584,46 @@
   border-color: hsla(35, 100%, 55%, 0.30);
 }
 
-/* Cartões pôster dos carrosséis de tendências (filmes e séries). */
-.pcard--poster {
-  flex: 0 0 128px;
+/* Cartões pôster do carrossel "Ao vivo em alta" (arte ~2:3 da programação). */
+.pcard--live {
+  flex: 0 0 132px;
   flex-direction: column;
   align-items: stretch;
   padding: 0;
   overflow: hidden;
 }
 
-.pcard--poster .pcard-body {
+.pcard--live .pcard-body {
   padding: 8px 10px 10px;
 }
 
-.tcard-img {
+/* Container do pôster: a inicial (fallback) fica atrás do <img>, ambos
+   preenchendo a caixa, então uma imagem que falha (onerror -> this.remove())
+   revela a inicial sem buraco no layout. */
+.tcard-thumb {
+  position: relative;
+  display: block;
   width: 100%;
   aspect-ratio: 2 / 3;
-  object-fit: cover;
+  overflow: hidden;
   background: hsla(0, 0%, 100%, 0.04);
 }
 
-.tcard-img--fallback {
+/* O tamanho vem do inset, não de height:100% — num pai cuja altura vem de
+   aspect-ratio, porcentagem resolveria para auto e a caixa zeraria. */
+.tcard-thumb > .tcard-img {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.tcard-img--photo {
+  object-fit: cover;
+}
+
+.tcard-img--fallback {
   font-size: 34px;
   font-weight: 700;
   color: var(--primary);

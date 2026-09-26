@@ -147,9 +147,11 @@
 
   const avatarForm = $('avatarForm');
   const avatarUrlInput = $('avatarUrl');
-  const avatarFileInput = $('avatarFile');
   const saveAvatarBtn = $('saveAvatarBtn');
+  const removeAvatarBtn = $('removeAvatarBtn');
   const avatarAlert = $('avatarAlert');
+  const avatarGoogleHint = $('avatarGoogleHint');
+  const avatarGoogleHintText = $('avatarGoogleHintText');
 
   function applyAvatar(url) {
     for (const imgId of ['profileAvatarImg', 'avatarPreviewImg']) {
@@ -169,37 +171,64 @@
     }
   }
 
+  // `source`: 'custom' (URL externa pessoal) | 'google' | 'none'.
+  function refreshAvatarUi(source) {
+    if (removeAvatarBtn) removeAvatarBtn.hidden = source !== 'custom';
+    if (!avatarGoogleHint) return;
+
+    const userData = readUserData();
+    const hasGoogle = !!userData.googleId || userData.authProvider === 'google';
+
+    let text;
+    if (source === 'google') text = 'Usando a foto do seu Google. Defina uma URL acima para usar um avatar personalizado.';
+    else if (source === 'custom') text = hasGoogle
+      ? 'Usando o avatar personalizado. Remova para voltar ao Google.'
+      : 'Usando o avatar personalizado.';
+    else if (hasGoogle) text = 'Sem avatar personalizado. Sua foto do Google aparece por padrão.';
+    else text = 'Sem avatar personalizado.';
+
+    if (avatarGoogleHintText) avatarGoogleHintText.textContent = text;
+    avatarGoogleHint.hidden = false;
+  }
+
+  async function saveAvatar(url) {
+    const json = await apiFetch('/api/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ avatar: url }),
+    });
+
+    // O servidor devolve o avatar EFETIVO já resolvido (custom OU google) e a
+    // fonte; atualiza também o data island para os próximos renders.
+    const user = json.data.user;
+    const eff = user.avatar || '';
+    applyAvatar(eff);
+    refreshAvatarUi(user.avatarSource || (eff ? 'custom' : 'none'));
+
+    const island = document.getElementById('__USER_DATA__');
+    if (island) {
+      try {
+        const data = JSON.parse(island.textContent) || {};
+        data.avatar = eff;
+        data.avatarSource = user.avatarSource || 'none';
+        island.textContent = JSON.stringify(data);
+      } catch (_) { /* data island corrompido — ignora */ }
+    }
+  }
+
   avatarForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const file = avatarFileInput?.files?.[0];
+    const url = avatarUrlInput.value.trim();
 
-    if (!file && !avatarUrlInput.value.trim()) {
-      showAlert(avatarAlert, 'Informe uma URL ou selecione um arquivo.', 'error');
-      setLoading(saveAvatarBtn, false);
+    if (!url) {
+      showAlert(avatarAlert, 'Informe uma URL HTTPS para o avatar.', 'error');
       return;
     }
 
     try {
       setLoading(saveAvatarBtn, true);
-
-      let json;
-
-      if (file) {
-        const formData = new FormData();
-        formData.append('avatar', file);
-        json = await apiFetch('/api/auth/avatar', { method: 'POST', body: formData });
-      } else {
-        json = await apiFetch('/api/auth/avatar', {
-          method: 'POST',
-          body: JSON.stringify({ imageUrl: avatarUrlInput.value.trim() }),
-        });
-      }
-
-      applyAvatar(json.data.avatar);
+      await saveAvatar(url);
       avatarUrlInput.value = '';
-      avatarFileInput.value = '';
-
       showAlert(avatarAlert, 'Avatar atualizado com sucesso.', 'success');
     } catch (err) {
       showAlert(avatarAlert, err.message, 'error');
@@ -207,6 +236,20 @@
       setLoading(saveAvatarBtn, false);
     }
   });
+
+  removeAvatarBtn?.addEventListener('click', async () => {
+    try {
+      setLoading(removeAvatarBtn, true);
+      await saveAvatar('');
+      showAlert(avatarAlert, 'Avatar removido.', 'success');
+    } catch (err) {
+      showAlert(avatarAlert, err.message, 'error');
+    } finally {
+      setLoading(removeAvatarBtn, false);
+    }
+  });
+
+  refreshAvatarUi(readUserData().avatarSource);
 
   const profileForm = $('profileForm');
   const profileNameInput = $('profileName');
@@ -334,14 +377,20 @@
 
   let googleLinked = !!readUserData().googleId;
 
+  // Conta criada via Google (authProvider='google') NÃO pode desvincular:
+  // o servidor bloqueia (UNLINK_BLOCKED) porque ficaria sem método de login.
+  const googleOnlyAccount = readUserData().authProvider === 'google';
+
   function renderGoogleState() {
     if (googleLinked) {
       if (googleAccountStatus) {
-        googleAccountStatus.textContent = 'Conta Google vinculada. Você pode entrar sem senha.';
+        googleAccountStatus.textContent = googleOnlyAccount
+          ? 'Conta Google vinculada (login principal desta conta).'
+          : 'Conta Google vinculada. Você pode entrar sem senha.';
         googleAccountStatus.className = 'google-account-status google-account-status--linked';
       }
       if (linkGoogleBtn) linkGoogleBtn.hidden = true;
-      if (unlinkGoogleBtn) unlinkGoogleBtn.hidden = false;
+      if (unlinkGoogleBtn) unlinkGoogleBtn.hidden = googleOnlyAccount;
     } else {
       if (googleAccountStatus) {
         googleAccountStatus.textContent = 'Nenhuma conta Google vinculada ainda.';

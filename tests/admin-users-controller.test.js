@@ -279,3 +279,61 @@ test('updateProfile: e-mail já usado por OUTRO usuário → 409 sem atualizar',
     }
   );
 });
+
+test('updateProfile: avatar URL HTTPS válida → grava avatar no update', async () => {
+  let updateArg = null;
+  const updated = { ...TARGET, avatar: 'https://8.8.8.8/avatar.png' };
+  await withPrismaMocks(
+    {
+      'user.findUnique': async () => ({ ...TARGET }),
+      'user.update': async (args) => { updateArg = args; return updated; },
+    },
+    async () => {
+      const res = spyRes();
+      await adminController.updateProfile(
+        { params: { userId: 'usr-9' }, body: { avatar: 'https://8.8.8.8/avatar.png' }, user: ADMIN },
+        res,
+        makeNext()
+      );
+      assert.equal(res.statusCode, 200);
+      assert.equal(updateArg.data.avatar, 'https://8.8.8.8/avatar.png');
+      assert.equal(res.jsonBody.data.user.id, 'usr-9');
+    }
+  );
+});
+
+test('updateProfile: avatar inválido (javascript:) → 422 sem gravar', async () => {
+  let updateCalled = false;
+  await withPrismaMocks(
+    {
+      'user.findUnique': async () => ({ ...TARGET }),
+      'user.update': async () => { updateCalled = true; return null; },
+    },
+    async () => {
+      await assert.rejects(
+        () => adminController.updateProfile({ params: { userId: 'usr-9' }, body: { avatar: 'javascript:alert(1)' }, user: ADMIN }, spyRes(), makeNext()),
+        (err) => err.statusCode === 422
+      );
+      assert.equal(updateCalled, false, 'não toca o banco com URL de avatar perigosa');
+    }
+  );
+});
+
+test('updateProfile: avatar:"" remove o personalizado e o efetivo volta ao Google', async () => {
+  let updateArg = null;
+  const updated = { ...TARGET, avatar: '', googleAvatarUrl: 'https://lh3.googleusercontent.com/a/x' };
+  await withPrismaMocks(
+    {
+      'user.findUnique': async () => ({ ...TARGET, avatar: 'https://cdn.example.com/eu.png' }),
+      'user.update': async (args) => { updateArg = args; return updated; },
+    },
+    async () => {
+      const res = spyRes();
+      await adminController.updateProfile({ params: { userId: 'usr-9' }, body: { avatar: '' }, user: ADMIN }, res, makeNext());
+      assert.equal(res.statusCode, 200);
+      assert.equal(updateArg.data.avatar, '');
+      assert.equal(res.jsonBody.data.user.avatar, 'https://lh3.googleusercontent.com/a/x', 'efetivo = googleAvatarUrl');
+      assert.equal(res.jsonBody.data.user.avatarSource, 'google');
+    }
+  );
+});

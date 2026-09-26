@@ -74,7 +74,7 @@ const querys = {
     `?from=${Date.now() - 2 * 3600e3}&to=${Date.now() + 8 * 3600e3}&limitChannels=24`,
   ],
   epgSearch: ['?q=globo', '?q=jornal 20h&tz=0', '?q=novela', '?q=futebol 21h30'],
-  trending: ['', '/movies', '/series', '/channels'],
+  trending: ['', '/channels'],
   dashboard: [`?windowMs=${24 * 3600e3}`],
   reminders: ['', '?limit=100&upcoming=1'],
 };

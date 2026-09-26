@@ -71,18 +71,27 @@ const counters = {
   remindersEmailFailures: 0,
   // Busca combinada (EPG + canais)
   guideSearches: 0,
-  // Segurança: WAF (block/monitoramento) + CAPTCHA + OAuth Google
+  // Segurança: WAF (block/monitoramento) + OAuth Google
   wafRequests: 0,
   wafDetected: 0,
   wafBlockedIp: 0,
   wafRateLimited: 0,
   securityBlocks: 0,
-  captchaSuccesses: 0,
-  captchaFailures: 0,
+  // WAF / IP Access Control (blocklist persistente por IP)
+  ipAccessBlocked: 0,
+  ipAccessBlocksAdmin: 0,
+  ipAccessUnblocksAdmin: 0,
+  ipBlocklistCacheHits: 0,
+  ipBlocklistCacheMisses: 0,
+  ipBlocklistFallbacks: 0,
+  ipBlocklistPersistenceFailures: 0,
+  ipBlocklistRetentionDeleted: 0,
   'google.login': 0,
   'google.register': 0,
   'google.userCreated': 0,
   'google.failure': 0,
+  'google.loginDenied': 0,
+  'google.registrationRejected': 0,
   'googleIdMismatch': 0,
 };
 

@@ -195,7 +195,7 @@ api-stream-m3u8/
     │                            #   recommendationService, analyticsService,
     │                            #   epgService, bootstrapService
     ├── utils/                   # publicChannel, metrics, analytics, passwordPolicy,
-    │                            #   dbState, logger, helpers, supabaseClient
+    │                            #   dbState, logger, helpers, ssrfGuard
     └── Player/                  # index.html, player.js, player.css, epgBar.js, assets/
 ```
 
@@ -209,12 +209,11 @@ api-stream-m3u8/
 |---|---|
 | **Node.js (18+)** | Runtime server-side |
 | **Express (4.18)** | Framework HTTP / rotas |
-| **Prisma + @supabase/supabase-js** | ORM PostgreSQL (Supabase) + Storage (avatares) |
+| **Prisma** | ORM PostgreSQL (Supabase) |
 | **jsonwebtoken / bcryptjs** | JWT (sessão/API/playback) + hash de senha (bcrypt 12 rounds) |
 | **helmet / cors / express-rate-limit** | Headers de segurança, CORS e rate limiting |
 | **Joi** | Validação de schemas (erros → 422 com `errors[]`) |
 | **winston + morgan** | Logs estruturados + logging HTTP |
-| **multer** | Upload de avatar (máx. 5 MB) |
 | **axios** | Cliente HTTP do proxy HLS e download de M3U remotas |
 | **fast-xml-parser** | Parse do XMLTV (`EPG_URL`) no `epgService` |
 | **nodemailer** | Envio de e-mails transacionais (código de recuperação de senha via SMTP) |
@@ -233,7 +232,7 @@ api-stream-m3u8/
 | Serviço | Uso |
 |---|---|
 | **Vercel** | Deploy serverless (`vercel.json` → `src/app.js`) |
-| **Supabase (PostgreSQL)** | Banco de dados + Storage |
+| **Supabase (PostgreSQL)** | Banco de dados |
 | **Upstash Redis (REST)** | Estado distribuído para rate limiting e concorrência de streams (opcional; fallback em memória) |
 | **Docker Compose** | Ambiente de **desenvolvimento local** (Postgres 16 + Redis 7 + proxy) — alternativa ao Supabase/Upstash durante o dev, ver seção abaixo |
 | **HTTP/HTTPS** | Protocolo |
@@ -372,8 +371,7 @@ Três tipos de token JWT, com segredos distintos:
 | POST | `/api/auth/logout` | Sessão | Revoga **todas** as sessões (bump `sv`) e limpa cookie |
 | GET | `/api/auth/profile` | Sessão | Perfil + API token |
 | GET | `/api/auth/api-token` | Sessão | Retorna só o API token (sob demanda, não no HTML) |
-| PUT | `/api/auth/profile` | Sessão | Atualiza nome/avatar |
-| POST | `/api/auth/avatar` | Sessão | Upload de avatar (arquivo ≤5 MB ou URL) → Supabase Storage |
+| PUT | `/api/auth/profile` | Sessão | Atualiza nome/avatar — `avatar` é **URL externa HTTPS** (validada: sem upload; `''` limpa o personalizado e volta à foto do Google, se houver) |
 | POST | `/api/auth/change-password` | Sessão | Troca de senha (revoga outras sessões; reemite a atual) |
 | POST | /api/auth/forgot-password | Público (`forgotPasswordLimiter`) | Solicita código de 6 dígitos (anti-enumeração; resposta genérica; SMTP fail-safe) |
 | POST | /api/auth/reset-password | Público (`resetPasswordLimiter`) | Redefine a senha com o código (TTL 15 min, 5 tentativas, uso único; revoga TODAS as sessões) |
@@ -419,23 +417,26 @@ Três tipos de token JWT, com segredos distintos:
 | POST | `/api/user/playlists/create-with-channel` | Criar playlist + salvar canal em transação |
 | GET | `/api/user/playlists/status/:channelId` | Playlist que contém o canal (estado do modal) |
 
-### Tendências (Top 10 do catálogo — session **ou** API)
+### "Ao vivo em alta" (catálogo — session **ou** API)
 
 | Método | Rota | Descrição |
 |---|---|---|
-| GET | `/api/trending` | Filmes + séries + programações ao vivo em alta em **1 chamada** (alimenta os carrosséis da dashboard) |
-| GET | `/api/trending/movies` | Top 10 filmes mais assistidos (apenas metadados públicos) |
-| GET | `/api/trending/series` | Top 10 séries mais assistidas (apenas metadados públicos) |
+| GET | `/api/trending` | Programações ao vivo em alta em **1 chamada** (alimenta o carrossel da dashboard) |
 | GET | `/api/trending/channels` | Programações ao vivo mais assistidas no momento |
 
-As rotas de tendências consultam um **catálogo GraphQL externo** (`TRENDING_API_URL`),
-com cache em memória (TTL `TRENDING_CACHE_TTL_MS`) e **fail-open**: provedor offline,
+As rotas de tendências consultam um **catálogo GraphQL externo** (`TRENDING_API_URL`)
+apenas para **programações ao vivo em alta** — não há mais seções de filmes/séries.
+Cache em memória (TTL `TRENDING_CACHE_TTL_MS`) e **fail-open**: provedor offline,
 desligado (`TRENDING_ENABLED=false`) ou sem resposta → listas vazias com `success: true`
-(os carrosséis ficam ocultos no frontend), **nunca 500**. Só saem metadados públicos
-(título, imagens, gênero, duração, logo) — nenhuma URL de stream, nenhum IP, e a URL
-do provedor nunca aparece nas respostas nem nos logs. Na dashboard a seção é **re-pollada
-a cada 30 min** (o cache server-side dura 30 min — o polling de 30s ficaria repetindo o
-mesmo snapshot; helper `Realtime` não sobrepõe requisições e pausa em aba oculta).
+(o carrossel fica oculto no frontend), **nunca 500**. Só saem metadados públicos
+(título, canal, gênero e a arte da programação) — nenhuma URL de stream, nenhum IP, e a
+URL do provedor nunca aparece nas respostas nem nos logs. Na dashboard a seção é
+**re-pollada a cada 30 min** (o cache server-side dura 30 min — o polling de 30s ficaria
+repetindo o mesmo snapshot; helper `Realtime` não sobrepõe requisições e pausa em aba oculta).
+
+As artes vêm do CDN do provedor, que **recusa (403) qualquer requisição com header
+`Referer`** (proteção anti-hotlink). Por isso o `<img>` do carrossel carrega
+`referrerpolicy="no-referrer"` — sem ele nenhuma imagem aparece.
 
 ### Playback (session **ou** API **ou** playback do canal)
 
@@ -457,9 +458,8 @@ para não atrapalhar operações legítimas. Respostas de usuários usam a **DTO
 | GET | `/api/admin/users/:userId` | Detalhe de um usuário (modal do painel) — audita `admin.user.view` |
 | PUT | `/api/admin/users/:userId/role` | Altera papel (`user`/`admin`). Recusa demover o próprio admin ou o último admin ativo |
 | PUT | `/api/admin/users/:userId/block` | Bloqueia/desbloqueia (revoga API tokens + sessões, altera status). Guardas anti-self-lockout e anti-último-admin |
-| PUT | `/api/admin/users/:userId/profile` | Atualiza nome/e-mail (whitelist; e-mail duplicado → 409) — audita `admin.user.profile_updated` |
+| PUT | `/api/admin/users/:userId/profile` | Atualiza nome/e-mail/**avatar** (whitelist; e-mail duplicado → 409; avatar = URL externa HTTPS validada, `''` remove) — audita `admin.user.profile_updated` + `admin.user.avatar_updated` quando o avatar muda |
 | POST | `/api/admin/users/:userId/password` | Redefine senha (política completa) e revoga **todas** as sessões — audita `admin.user.password_changed` |
-| POST | `/api/admin/users/:userId/avatar` | Upload multipart `avatar` (JPG/PNG/WEBP/GIF ≤5MB, validado por **magic bytes**) ou `imageUrl` (com **guarda SSRF**) — audita `admin.user.avatar_updated` |
 | DELETE | `/api/admin/users/:userId` | Exclusão permanente, exige `{ "confirm": true }` no corpo (nunca apenas `confirm()` no navegador). Audita `admin.user.deleted`; a trilha sobrevive (audit_logs sem FK) |
 | GET | `/api/admin/channels` | Canais com status online/offline/unknown (**sem url/source**) |
 | POST | `/api/admin/channels/reload` | Recarrega M3U |
@@ -615,7 +615,7 @@ analyticsService            →  métricas admin ao vivo + agregação diária +
 ### Realtime por polling (`public/js/realtime.js`)
 
 - `Realtime.poll({ name, fn, interval })`: agenda sem sobrepor chamadas em andamento, **pausa em aba oculta** e dispara tick imediato ao voltar.
-- Integrado: dashboard (pessoal 30s + **trending 30min**), playlists (30s), admin (30s — métricas/auditoria sempre; canais só na aba aberta; analytics apenas no período `today`).
+- Integrado: dashboard (pessoal 30s + **"Ao vivo em alta" 30min**), playlists (30s), admin (30s — métricas/auditoria sempre; canais só na aba aberta; analytics apenas no período `today`).
 - Escolha de arquitetura: **polling** (não SSE/WebSocket) — compatível com serverless, sem estado persistente.
 
 ### Player (`src/Player/`)
@@ -746,9 +746,6 @@ Comandos auxiliares:
 | `APP_BASE_URL` | p/ e-mail com link | — | URL pública da aplicação usada nos e-mails transacionais para montar o link de `/reset-password`. Vazia → e-mail **sem link** (só instrução em texto) |
 | `DATABASE_URL` | ✅ | — | Postgres. **Dev**: `:5432`; **Vercel**: `:6543` (transaction pooler) |
 | `DIRECT_URL` | ✅ | — | Usada **apenas pela CLI Prisma** → `:5432` (nunca `:6543`) |
-| `SUPABASE_URL` | p/ avatar | — | URL do projeto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | p/ avatar | — | Service role key (nunca commit) |
-| `SUPABASE_BUCKET_AVATARS` | — | `SvenTvAvatars` | Bucket de avatares |
 | `JWT_SECRET` | ✅ | fallback dev | Assina session tokens (7d) |
 | `JWT_SESSION_EXPIRES_IN` | — | `7d` | TTL da sessão |
 | `JWT_API_SECRET` | ✅ | fallback dev | Assina API tokens (365d) |
@@ -906,7 +903,7 @@ Relatórios e diretrizes das rodadas de evolução:
 | `docs/RELATORIO-AUDITORIA-IMPLEMENTACAO-2026-09-16-v2.md` | REV 2: consumo do código de reset em instrução SQL única e atômica (corrida de dupla redefinição), política no nível de serviço, auditorias `TERMS_ACCEPTED`/`CODE_VERIFIED`/`CODE_INVALIDATED`, 113/113 testes |
 | `docs/RELATORIO-AUDITORIA-IMPLEMENTACAO-USUARIOS-2026-09-16.md` | Gestão administrativa de usuários (DTO whitelist, anti-self-lockout, último admin, avatar com SSRF guard, rate limit admin-write, frontend cards/filtros/modal), 147/147 testes |
 | `docs/RELATORIO-AUDITORIA-PERSISTENCIA-ESTADO-CANAIS-2026-09-16.md` | Estado de canal persistido no Postgres (`channel_states`) + cache TTL read-through, write-through do admin, fail-open, migração aplicada, 166/166 testes |
-| `docs/RELATORIO-TRENDING-2026-09-17.md` | Rotas `/api/trending` (Top 10 do catálogo): endpoints, cache por lambda, fail-open, whitelist de metadados, anti-SSRF e carrosséis novos da dashboard |
+| `docs/RELATORIO-TRENDING-2026-09-17.md` | Rotas `/api/trending` (catálogo): endpoints, cache por lambda, fail-open, whitelist de metadados, anti-SSRF e carrossel da dashboard. **Histórico:** descreve a versão com filmes/séries — hoje restou somente "Ao vivo em alta" (seções e rotas `/movies` e `/series` removidas) |
 | `docs/RELATORIO-AUDITORIA-IMPLEMENTACAO-EPG-2026-09-17.md` | Barra de EPG **embutida no player** (agora/próximo/progresso), janela 1h+12h server-side (`getPlayerWindow`), `safeScriptJson`, zero requisição de EPG na reprodução, 214/214 testes |
 
 ---
@@ -928,7 +925,7 @@ Relatórios e diretrizes das rodadas de evolução:
 - [x] Painel admin (usuários, canais + estado, métricas, Live Control, analytics, auditoria)
 - [x] Dashboard/painel web com realtime (polling) e carrossel
 - [x] Guia de Programação (EPG): XMLTV em memória + casamento por nome/alias + página `/guia` (**todos os canais da M3U**; sem EPG = grade vazia)
-- [x] Tendências (Top 10): rotas `/api/trending` com GraphQL externo em memória, fail-open e carrosséis na dashboard
+- [x] "Ao vivo em alta": rotas `/api/trending` com GraphQL externo em memória, fail-open e carrossel na dashboard
 - [x] Estado distribuído (Upstash Redis) para rate limiting e concorrência de streams, com fallback em memória e kill switch
 - [x] Recuperação de senha por código (SHA-256, TTL, tentativas, uso único, revogação de sessões) + SMTP
 - [x] Termos de Uso versionados + política de senha (8–72 bytes UTF-8)

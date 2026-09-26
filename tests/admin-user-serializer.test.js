@@ -97,3 +97,17 @@ test('serializeAdminUser(null) e listas inválidas são seguras', () => {
   assert.deepEqual(serializeAdminUserList(undefined), []);
   assert.deepEqual(serializeAdminUserList('nao-array'), []);
 });
+
+test('avatar efetivo = custom || googleAvatarUrl; avatarSource identifica a fonte', () => {
+  const custom = serializeAdminUser({ id: 'u1', avatar: 'https://cdn.example.com/eu.png', googleAvatarUrl: 'https://lh3.googleusercontent.com/x' });
+  assert.equal(custom.avatar, 'https://cdn.example.com/eu.png');
+  assert.equal(custom.avatarSource, 'custom');
+
+  const google = serializeAdminUser({ id: 'u2', avatar: '', googleAvatarUrl: 'https://lh3.googleusercontent.com/x' });
+  assert.equal(google.avatar, 'https://lh3.googleusercontent.com/x');
+  assert.equal(google.avatarSource, 'google');
+
+  const none = serializeAdminUser({ id: 'u3', avatar: '', googleAvatarUrl: null });
+  assert.equal(none.avatar, '');
+  assert.equal(none.avatarSource, 'none');
+});

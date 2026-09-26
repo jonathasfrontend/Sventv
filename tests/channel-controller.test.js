@@ -70,11 +70,13 @@ class FakeState {
 FakeState._shared = null;
 FakeState.getShared = () => { if (!FakeState._shared) FakeState._shared = new FakeState(); return FakeState._shared; };
 
+// `acquireSlot` devolve um LEASE (não boolean) para que o release desfaz
+// exatamente o backend que concedeu a vaga. O stub reflete esse contrato.
 const LIMITER_STUB = {
-  acquireSlot: async () => true,
+  acquireSlot: async () => ({ backend: 'mem', key: 'u:test' }),
   releaseSlot: async () => {},
   keyFor: (req) => (req && req.user && req.user.id) || 'ip:test',
-  ACTIVE_DEFAULT: 1,
+  ACTIVE_DEFAULT: 3,
 };
 
 for (const [p, mod] of [

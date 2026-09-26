@@ -152,6 +152,25 @@ const config = {
     cacheTtlMs: parseInt(process.env.CHANNEL_STATE_CACHE_TTL_MS, 10) || 8_000,
   },
 
+  // ---- WAF / IP Access Control (blocklist persistente de IPs) ----
+  // Bloqueio administrativo por IP (registro E login), independente do
+  // bloqueio de conta. Fonte de verdade = Postgres (ip_blocklist) com cache
+  // local curto por lambda (reusa o padrão do channelStateService) e falha
+  // tolerante: banco fora → mantém o último estado em memória (fail-open,
+  // a autenticação continua sendo a barreira primária).
+  ipAccess: {
+    // Kill switch: IP_ACCESS_ENABLED=false desliga a blocklist de IPs sem
+    // novo deploy (o WAF_BLOCKED_IPS por env continua valendo).
+    enabled: process.env.IP_ACCESS_ENABLED !== 'false',
+    // TTL do cache local das respostas de bloqueio (ms). Um IP bloqueado/
+    // desbloqueado por outro admin propaga em até ~este valor na instância
+    // com cache. Padrão 10s = compromisso propagação/custo de query.
+    cacheTtlMs: parseInt(process.env.IP_ACCESS_CACHE_TTL_MS, 10) || 10_000,
+    // Retenção: dias para APAGAR registros de ip_blocklist JÁ desbloqueados
+    // (0 = desativado; o histórico vivo em audit_logs nunca é apagado aqui).
+    retentionDays: parseInt(process.env.IP_BLOCKLIST_RETENTION_DAYS, 10) || 0,
+  },
+
   // ---- Trending (Top 10 — catálogo metadados, em memória, por lambda) ----
   // Consulta um catálogo externo de metadados (GraphQL do provedor) para a
   // dashboard: filmes/séries mais assistidos e programações ao vivo em alta.
@@ -324,13 +343,6 @@ const config = {
     origins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
       : ['*'],
-  },
-
-  // ---- Supabase Storage ----
-  supabase: {
-    url: process.env.SUPABASE_URL || '',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-    bucketAvatars: process.env.SUPABASE_BUCKET_AVATARS || 'SvenTvAvatars',
   },
 };
 

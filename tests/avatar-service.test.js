@@ -1,78 +1,126 @@
-'use strict';
-
 /**
- * Hardening do avatarService para a missão admin:
- *  - SVG EXCLUÍDO dos formatos aceitos (ALLOWED_MIME);
- *  - validação por MAGIC BYTES (o servidor confia no conteúdo, não no MIME
- *    declarado pelo cliente);
- *  - recusa precoce de uploads grandes/ausentes ANTES de tocar o storage.
- * Sem rede: SSRF e upload Supabase não são exercitados aqui.
+ * SvenTV — testes do avatarService (migração v2.0.1: avatar = URL externa)
+ *
+ * A partir da migração não existe mais upload de arquivo nem Supabase
+ * Storage: o serviço exporta `validateAvatarUrl`, `MAX_URL_LENGTH`,
+ * `ALLOWED_PROTOCOLS` e `BLOCKED_PROTOCOLS`. Todos os esquemas perigosos
+ * (javascript:, data:, file:, ...) e o HTTP puro são recusados; credenciais
+ * embutidas são recusadas; hosts não-públicos (privado/loopback/metadata)
+ * são recusados pela guarda SSRF (defesa em profundidade — o servidor nunca
+ * baixa a imagem, quem carrega é o navegador).
  */
 
+'use strict';
+
 const { test } = require('node:test');
-const assert = require('node:assert/strict');
+const assert = require('node:assert');
 
 const avatarService = require('../src/services/avatarService');
 
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
-const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]);
-const GIF = Buffer.concat([Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]), Buffer.alloc(64)]);
-const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP'), Buffer.alloc(16)]);
-const SVG_TEXT = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+const PUBLIC_IP = 'https://8.8.8.8/avatar.png';
 
-const expect422 = (promiseOrFn, messagePart) =>
-  assert.rejects(
-    typeof promiseOrFn === 'function' ? promiseOrFn : () => promiseOrFn,
-    (err) => {
-      assert.equal(err.statusCode, 422);
-      if (messagePart) assert.ok(String(err.message).includes(messagePart));
-      return true;
-    }
-  );
+const expect422 = async (promise, code) => {
+  try {
+    await promise;
+    assert.fail('esperava rejeição com statusCode 422');
+  } catch (err) {
+    assert.equal(err.statusCode, 422, `esperado 422, recebido ${err.statusCode}`);
+    if (code) assert.equal(err.code, code);
+    return err;
+  }
+};
 
-test('detectImageMime: identifica JPG, PNG, GIF e WebP pelos magic bytes', () => {
-  assert.equal(avatarService.detectImageMime(JPG), 'image/jpeg');
-  assert.equal(avatarService.detectImageMime(PNG), 'image/png');
-  assert.equal(avatarService.detectImageMime(GIF), 'image/gif');
-  assert.equal(avatarService.detectImageMime(WEBP), 'image/webp');
+test('expor constantes esperadas', () => {
+  assert.equal(typeof avatarService.validateAvatarUrl, 'function');
+  assert.equal(avatarService.MAX_URL_LENGTH, 2048);
+  assert.ok(avatarService.ALLOWED_PROTOCOLS instanceof Set);
+  assert.ok(avatarService.ALLOWED_PROTOCOLS.has('https:'));
+  assert.ok(avatarService.BLOCKED_PROTOCOLS instanceof Set);
 });
 
-test('detectImageMime: NÃO reconhece SVG nem conteúdo textual/binário vazio', () => {
-  assert.equal(avatarService.detectImageMime(SVG_TEXT), null);
-  assert.equal(avatarService.detectImageMime(Buffer.from('não é imagem')), null);
-  assert.equal(avatarService.detectImageMime(Buffer.alloc(0)), null);
+test('aceita URL HTTPS com host IPv4 público literal (sem DNS)', async () => {
+  const out = await avatarService.validateAvatarUrl(PUBLIC_IP);
+  assert.equal(out, PUBLIC_IP);
 });
 
-test('validateImageBuffer: SVG (mesmo declarado) é recusado — formato não suportado', () => {
-  assert.throws(() => avatarService.validateImageBuffer(SVG_TEXT, 'image/svg+xml'), (err) => err.statusCode === 422);
-  assert.throws(() => avatarService.validateImageBuffer(SVG_TEXT, 'image/png'), (err) => err.statusCode === 422);
+test('aceita URL HTTPS válida normalizando o href', async () => {
+  const out = await avatarService.validateAvatarUrl(PUBLIC_IP + '?a=1#frag');
+  assert.equal(out, PUBLIC_IP + '?a=1#frag');
 });
 
-test('validateImageBuffer: mismatch entre MIME declarado e conteúdo real é recusado', () => {
-  assert.throws(() => avatarService.validateImageBuffer(GIF, 'image/png'), (err) => err.statusCode === 422);
-  assert.throws(() => avatarService.validateImageBuffer(PNG, 'image/jpeg'), (err) => err.statusCode === 422);
-  assert.throws(() => avatarService.validateImageBuffer(Buffer.from('texto puro'), 'image/png'), (err) => err.statusCode === 422);
+test('aceita trim em volta da URL', async () => {
+  const out = await avatarService.validateAvatarUrl(`   ${PUBLIC_IP}   `);
+  assert.equal(out, PUBLIC_IP);
 });
 
-test('validateImageBuffer: aceita apenas conteúdo que casa com o MIME declarado', () => {
-  avatarService.validateImageBuffer(PNG, 'image/png');
-  avatarService.validateImageBuffer(JPG, 'image/jpeg');
-  avatarService.validateImageBuffer(GIF, 'image/gif');
-  avatarService.validateImageBuffer(WEBP, 'image/webp');
+test('rejeita valor vazio, nulo, não-string ou só espaço', async () => {
+  for (const bad of ['', '   ', null, undefined, 42, {}, []]) {
+    const { code } = await expect422(avatarService.validateAvatarUrl(bad));
+    assert.equal(code, 'INVALID_AVATAR_URL');
+  }
 });
 
-test('ALLOWED_MIME: não contém imagem SVG', () => {
-  assert.equal(avatarService.ALLOWED_MIME.has('image/svg+xml'), false);
-  assert.equal(avatarService.ALLOWED_MIME.has('image/svg'), false);
+test('rejeita URL acima de MAX_URL_LENGTH', async () => {
+  const tooLong = `${PUBLIC_IP}${'x'.repeat(avatarService.MAX_URL_LENGTH)}`;
+  const err = await expect422(avatarService.validateAvatarUrl(tooLong));
+  assert.ok(/2048/.test(err.message), 'mensagem deve citar o limite de 2048');
 });
 
-test('uploadAvatar: recusa sem arquivo nem URL', async () => {
-  await expect422(avatarService.uploadAvatar({ userId: 'u1' }));
+test('rejeita URL malformada (não é URL parseável)', async () => {
+  for (const bad of ['não é url', 'foo bar', 'https://', 'imagem.png', '//sem-scheme/img.png']) {
+    await expect422(avatarService.validateAvatarUrl(bad), 'INVALID_AVATAR_URL');
+  }
 });
 
-test('uploadAvatar: recusa arquivo acima de 5MB antes de tocar o storage', async () => {
-  const big = Buffer.alloc(5 * 1024 * 1024 + 1);
-  await expect422(() =>
-    avatarService.uploadAvatar({ file: { buffer: big, mimetype: 'image/png', size: big.length }, userId: 'u1' })
-  );
+test('rejeita esquemas perigosos e não-permitidos', async () => {
+  const cases = [
+    'javascript:alert(1)',
+    'java\nscript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+    'file:///etc/passwd',
+    'ftp://8.8.8.8/avatar.png',
+    'ftps://8.8.8.8/avatar.png',
+    'sftp://8.8.8.8/avatar.png',
+    'tel:+1234',
+    'mailto:foo@example.com',
+    'ws://8.8.8.8/avatar.png',
+    'wss://8.8.8.8/avatar.png',
+    'http://8.8.8.8/avatar.png',        // HTTP puro não é mais aceito
+    'http://example.com/avatar.png',
+    'foo://8.8.8.8/avatar.png',
+  ];
+  for (const bad of cases) {
+    const err = await expect422(avatarService.validateAvatarUrl(bad), 'INVALID_AVATAR_URL');
+    assert.ok(/protocolo|HTTPS/i.test(err.message), `mensagem de protocolo esperada para: ${bad}`);
+  }
+});
+
+test('rejeita credenciais embutidas (user:pass@host)', async () => {
+  const err = await expect422(avatarService.validateAvatarUrl('https://user:senha@8.8.8.8/avatar.png'));
+  assert.ok(/credenciais/i.test(err.message));
+});
+
+test('rejeita URL sem conteúdo parseável (https:// sem host)', async () => {
+  await expect422(avatarService.validateAvatarUrl('https://'), 'INVALID_AVATAR_URL');
+});
+
+test('rejeita hosts não-públicos via guarda SSRF (SSRF_BLOCKED)', async () => {
+  const blockedHosts = [
+    'https://127.0.0.1/avatar.png',
+    'https://10.0.0.1/avatar.png',
+    'https://192.168.1.1/avatar.png',
+    'https://169.254.169.254/latest/meta-data/',   // metadata cloud
+    'https://[::1]/avatar.png',
+  ];
+  for (const bad of blockedHosts) {
+    const { code } = await expect422(avatarService.validateAvatarUrl(bad));
+    assert.equal(code, 'SSRF_BLOCKED');
+  }
+});
+
+test('mensagem SSRF genérica (não vaza o host)', async () => {
+  const err = await expect422(avatarService.validateAvatarUrl('https://169.254.169.254/meta/'), 'SSRF_BLOCKED');
+  assert.ok(!/169\.254|metadata|host/.test(err.message), 'mensagem não deve conter o host rejeitado');
+  assert.equal(err.message, 'URL de imagem inválida ou inacessível.');
 });

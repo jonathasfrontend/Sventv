@@ -529,7 +529,7 @@ function userAvatarHtml(user, sizeClass = '') {
   if (!user.avatar) {
     return `<div class="user-avatar user-avatar--fallback ${sizeClass}">${escapeHtml(userInitials(user.name))}</div>`;
   }
-  return `<img class="user-avatar ${sizeClass}" src="${escapeHtml(user.avatar)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;user-avatar user-avatar--fallback ${sizeClass}&quot;>${escapeHtml(userInitials(user.name))}</div>'">`;
+  return `<img class="user-avatar ${sizeClass}" src="${escapeHtml(user.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=&quot;user-avatar user-avatar--fallback ${sizeClass}&quot;>${escapeHtml(userInitials(user.name))}</div>'">`;
 }
 
 function rolePill(user) {
@@ -628,7 +628,7 @@ function resetUserModal() {
     userModalEmail: '',
     userModalBadges: '',
     userModalAvatarBox: '',
-    userAvatarFile: '',
+    userAvatarUrl: '',
     userNameInput: '',
     userEmailInput: '',
     userPassInput: '',
@@ -683,6 +683,18 @@ function renderUserDetail() {
   if (email) email.textContent = u.email;
   const avatarBox = document.getElementById('userModalAvatarBox');
   if (avatarBox) avatarBox.innerHTML = userAvatarHtml(u, 'user-avatar--lg');
+  const avatarInput = document.getElementById('userAvatarUrl');
+  if (avatarInput) avatarInput.value = u.avatarSource === 'custom' ? u.avatar : '';
+  const avatarRemove = document.getElementById('userAvatarRemove');
+  if (avatarRemove) avatarRemove.hidden = u.avatarSource !== 'custom';
+  const avatarHint = document.getElementById('userAvatarHint');
+  if (avatarHint) {
+    avatarHint.textContent = u.avatarSource === 'google'
+      ? 'Usando a foto do Google. Defina uma URL acima para usar um avatar personalizado.'
+      : u.avatarSource === 'custom'
+        ? 'Avatar personalizado ativo. "Remover" volta ao Google (se houver).'
+        : 'Sem avatar. Defina uma URL HTTPS de terceiros acima (sem upload de arquivo).';
+  }
   const badges = document.getElementById('userModalBadges');
   if (badges) badges.innerHTML = rolePill(u) + statusPill(u);
 
@@ -845,23 +857,37 @@ delBtn.addEventListener('click', function () {
   });
 });
 
+function refreshAvatarModal(u) {
+  userDetail = u;
+  renderUserDetail();
+  refreshUserCard();
+  if (isAdminSelf(u)) location.reload();
+}
+
 document.getElementById('userAvatarSave').addEventListener('click', function () {
-  withBusy(this, 'Enviando...', async () => {
-    const file = document.getElementById('userAvatarFile').files[0];
-    if (!file) { showAlert('Selecione uma imagem.'); return; }
-    const fd = new FormData();
-    fd.append('avatar', file);
-    const res = await fetch(`/api/admin/users/${currentUserId}/avatar`, { method: 'POST', body: fd });
-    let json = {};
-    try { json = await res.json(); } catch (_) {}
-    if (!res.ok) { showAlert(json.message || `Erro ${res.status} no envio.`); return; }
-    userDetail = json.data.user;
-    showAlert(json.message || 'Avatar atualizado.', 'success');
-    renderUserDetail();
-    refreshUserCard();
-    if (isAdminSelf(userDetail)) location.reload();
+  withBusy(this, 'Salvando...', async () => {
+    const url = document.getElementById('userAvatarUrl').value.trim();
+    if (!url) { showAlert('Informe uma URL HTTPS para o avatar.'); return; }
+    try {
+      const res = await apiSend(`/api/admin/users/${currentUserId}/profile`, 'PUT', { avatar: url });
+      refreshAvatarModal(res.data.user);
+      showAlert(res.message || 'Avatar atualizado.', 'success');
+    } catch (err) { showAlert(err.message); }
   });
 });
+
+const userAvatarRemoveBtn = document.getElementById('userAvatarRemove');
+if (userAvatarRemoveBtn) {
+  userAvatarRemoveBtn.addEventListener('click', function () {
+    withBusy(this, 'Removendo...', async () => {
+      try {
+        const res = await apiSend(`/api/admin/users/${currentUserId}/profile`, 'PUT', { avatar: '' });
+        refreshAvatarModal(res.data.user);
+        showAlert(res.message || 'Avatar removido.', 'success');
+      } catch (err) { showAlert(err.message); }
+    });
+  });
+}
 
 // ════════════════════════════════════════════════════════════
 //  METRICS
@@ -932,8 +958,6 @@ const wafCountersEls = {
   wafBlockedIp:     document.getElementById('wafBlockedIp'),
   wafRateLimited:   document.getElementById('wafRateLimited'),
   securityBlocks:   document.getElementById('securityBlocks'),
-  captchaSuccesses: document.getElementById('captchaSuccesses'),
-  captchaFailures:  document.getElementById('captchaFailures'),
   googleLogins:     document.getElementById('googleLogins'),
   googleRegisters:  document.getElementById('googleRegisters'),
   googleUserCreated: document.getElementById('googleUserCreated'),
@@ -943,6 +967,26 @@ const wafCountersEls = {
 const wafBlockedIpsList = document.getElementById('wafBlockedIpsList');
 const wafEventCounts = document.getElementById('wafEventCounts');
 const wafEventsTableBody = document.getElementById('wafEventsTableBody');
+const wafIpBlockedCount = document.getElementById('wafIpBlockedCount');
+const wafIpAccessBlocked = document.getElementById('wafIpAccessBlocked');
+const wafIpsTableBody = document.getElementById('wafIpsTableBody');
+const wafIpsEmpty = document.getElementById('wafIpsEmpty');
+const wafIpsCountLabel = document.getElementById('wafIpsCountLabel');
+const wafIpSearch = document.getElementById('wafIpSearch');
+const wafIpStatus = document.getElementById('wafIpStatus');
+const reloadWafIpsBtn = document.getElementById('reloadWafIpsBtn');
+const ipBlockModalOverlay = document.getElementById('ipBlockModalOverlay');
+const ipBlockModalTitle = document.getElementById('ipBlockModalTitle');
+const ipBlockModalSubtitle = document.getElementById('ipBlockModalSubtitle');
+const ipBlockReason = document.getElementById('ipBlockReason');
+const ipSelfConfirmBox = document.getElementById('ipSelfConfirmBox');
+const ipSelfConfirmCheck = document.getElementById('ipSelfConfirmCheck');
+const ipBlockConfirmBtn = document.getElementById('ipBlockConfirmBtn');
+const ipBlockCancelBtn = document.getElementById('ipBlockCancelBtn');
+const ipBlockModalClose = document.getElementById('ipBlockModalClose');
+let wafIpsCache = [];
+let wafIpsSearchTimer = null;
+let pendingIpBlock = null;
 
 const WAF_ACTION_LABELS = {
   'security.sql_injection.detected': 'SQL injection detectada',
@@ -972,8 +1016,6 @@ function renderWaf(data) {
   set('wafBlockedIp', c.wafBlockedIp ?? '—');
   set('wafRateLimited', c.wafRateLimited ?? '—');
   set('securityBlocks', c.securityBlocks ?? '—');
-  set('captchaSuccesses', c.captchaSuccesses ?? '—');
-  set('captchaFailures', c.captchaFailures ?? '—');
   set('googleLogins', g.login ?? '—');
   set('googleRegisters', g.register ?? '—');
   set('googleUserCreated', g.userCreated ?? '—');
@@ -1011,11 +1053,171 @@ function renderWaf(data) {
           </tr>`).join('')
       : '<tr><td colspan="4">Sem eventos de segurança.</td></tr>';
   }
+
+  const ia = data?.ipAccess || {};
+  if (wafIpBlockedCount) wafIpBlockedCount.textContent = ia?.blockedCount ?? '—';
+  if (wafIpAccessBlocked) wafIpAccessBlocked.textContent = ia?.accessBlocked ?? '—';
 }
 
 async function loadWaf() {
   const json = await apiGet('/api/admin/waf');
   renderWaf(json.data);
+}
+
+// ── Controle de acesso por IP ─────────────────────────────────
+
+function filteredWafIps() {
+  const query = normalizeText(wafIpSearch?.value || '');
+  const status = wafIpStatus?.value || '';
+  return wafIpsCache.filter(u => {
+    const nu = normalizeText(u.name || '');
+    const ne = normalizeText(u.email || '');
+    const ips = [u.registrationIp, u.lastLoginIp].filter(Boolean).map(String);
+    const matchesQuery = !query
+      || nu.includes(query)
+      || ne.includes(query)
+      || ips.some(ip => ip.includes(query));
+    const blockedCount = (u.blockedIps || []).length;
+    const matchesStatus = !status
+      || (status === 'blocked' ? blockedCount > 0 : blockedCount === 0);
+    return matchesQuery && matchesStatus;
+  });
+}
+
+function wafIpPill(ip, n) {
+  const blocked = n > 0;
+  return `<span class="admin-waf-ip-chip ${blocked ? 'admin-waf-ip-chip--blocked' : 'admin-waf-ip-chip--free'}">
+    <i class="ph ${blocked ? 'ph-lock-simple' : 'ph-check'}"></i>
+    ${blocked ? `${n} bloqueado${n > 1 ? 's' : ''}` : 'liberado'}
+  </span>`;
+}
+
+function renderWafIps() {
+  if (!wafIpsTableBody) return;
+  const items = filteredWafIps();
+  if (wafIpsEmpty) wafIpsEmpty.hidden = !!items.length;
+  wafIpsTableBody.innerHTML = items.length
+    ? items.map(u => {
+        const registrationIp = u.registrationIp || '—';
+        const lastLoginIp = u.lastLoginIp || null;
+        const blockedCount = (u.blockedIps || []).length;
+        const canBlock = !!registrationIp || !!lastLoginIp;
+        const canUnblock = blockedCount > 0;
+        return `
+          <tr>
+            <td>
+              <div class="user-card-head" style="gap:8px">
+                ${userAvatarHtml(u)}
+                <div>
+                  <span class="user-card-name">${escapeHtml(u.name)}</span>
+                  <span class="user-card-email">${escapeHtml(u.email)}</span>
+                </div>
+              </div>
+            </td>
+            <td><code>${escapeHtml(registrationIp)}</code></td>
+            <td>${lastLoginIp ? `<code>${escapeHtml(lastLoginIp)}</code>` : '<span class="admin-table-muted">—</span>'}</td>
+            <td>${escapeHtml(u.lastLogin ? timeAgo(u.lastLogin) : '—')}</td>
+            <td>${statusPill(u)}</td>
+            <td>${wafIpPill(escapeHtml((u.blockedIps || []).join(', ')), blockedCount)}</td>
+            <td>
+              <div class="user-card-actions" style="gap:6px">
+                ${canBlock && !blockedCount ? `<button type="button" class="btn btn-danger btn-sm" data-waf-block-ip="${escapeHtml(u.id)}">Bloquear</button>` : ''}
+                ${canUnblock ? `<button type="button" class="btn btn-ghost btn-sm" data-waf-unblock-ip="${escapeHtml(u.id)}">Desbloquear</button>` : ''}
+              </div>
+            </td>
+          </tr>`;
+      }).join('')
+    : '<tr><td colspan="7">Nenhum usuário encontrado.</td></tr>';
+  bindWafIpEvents();
+}
+
+function bindWafIpEvents() {
+  wafIpsTableBody.querySelectorAll('[data-waf-block-ip]').forEach(btn => {
+    btn.addEventListener('click', () => openIpBlockModal(btn.dataset.wafBlockIp).catch(err => showAlert(err.message)));
+  });
+  wafIpsTableBody.querySelectorAll('[data-waf-unblock-ip]').forEach(btn => {
+    btn.addEventListener('click', () => unblockUserIp(btn.dataset.wafUnblockIp).catch(err => showAlert(err.message)));
+  });
+}
+
+async function loadWafIps() {
+  if (!wafIpsTableBody) return;
+  try {
+    const json = await apiGet('/api/admin/waf/ips');
+    wafIpsCache = json.data?.users || [];
+    if (wafIpsCountLabel) wafIpsCountLabel.textContent = `${wafIpsCache.length} usuário(s) listado(s)`;
+    renderWafIps();
+  } catch (err) {
+    if (wafIpsEmpty) wafIpsEmpty.hidden = true;
+    wafIpsTableBody.innerHTML = `<tr><td colspan="7">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function openIpBlockModal(userId) {
+  const user = wafIpsCache.find(u => String(u.id) === String(userId));
+  if (!user) return;
+  const ip = user.registrationIp || user.lastLoginIp || null;
+  if (!ip) {
+    showAlert('Este usuário não possui IP registrado para bloquear.');
+    return;
+  }
+  const isSelf = isAdminSelf(user);
+  pendingIpBlock = { userId: user.id, ip };
+  if (ipBlockModalTitle) ipBlockModalTitle.textContent = `Bloquear IP ${ip}`;
+  if (ipBlockModalSubtitle) ipBlockModalSubtitle.textContent = `${user.name} · ${user.email}`;
+  if (ipBlockReason) ipBlockReason.value = '';
+  if (ipSelfConfirmBox) ipSelfConfirmBox.hidden = !isSelf;
+  if (ipSelfConfirmCheck) ipSelfConfirmCheck.checked = false;
+  if (ipBlockConfirmBtn) ipBlockConfirmBtn.disabled = isSelf;
+  if (ipBlockModalOverlay) ipBlockModalOverlay.hidden = false;
+}
+
+function closeIpBlockModal() {
+  if (ipBlockModalOverlay) ipBlockModalOverlay.hidden = true;
+  pendingIpBlock = null;
+}
+
+async function confirmIpBlock() {
+  if (!pendingIpBlock) return;
+  const reason = (ipBlockReason?.value || '').trim() || undefined;
+  const isSelf = !ipSelfConfirmBox?.hidden;
+  const confirmSelfBlock = isSelf ? !!ipSelfConfirmCheck?.checked : undefined;
+  if (isSelf && !confirmSelfBlock) {
+    showAlert('Confirme no checkbox para bloquear o seu próprio IP.');
+    return;
+  }
+  try {
+    if (ipBlockConfirmBtn) ipBlockConfirmBtn.disabled = true;
+    const res = await apiSend(`/api/admin/waf/ips/${encodeURIComponent(pendingIpBlock.userId)}/block`, 'PUT', {
+      ip: pendingIpBlock.ip,
+      reason,
+      confirmSelfBlock,
+    });
+    closeIpBlockModal();
+    showAlert(res.message || 'IP bloqueado com sucesso.', 'success');
+    await loadWaf();
+    await loadWafIps();
+  } catch (err) {
+    showAlert(err.message);
+  } finally {
+    if (ipBlockConfirmBtn) ipBlockConfirmBtn.disabled = false;
+  }
+}
+
+async function unblockUserIp(userId) {
+  const user = wafIpsCache.find(u => String(u.id) === String(userId));
+  if (!user) return;
+  const ip = (user.blockedIps || [])[0] || user.registrationIp || user.lastLoginIp;
+  if (!ip) return;
+  if (!window.confirm(`Desbloquear o IP ${ip} de ${user.name}?`)) return;
+  try {
+    const res = await apiSend(`/api/admin/waf/ips/${encodeURIComponent(userId)}/unblock`, 'PUT', { ip });
+    showAlert(res.message || 'IP desbloqueado com sucesso.', 'success');
+    await loadWaf();
+    await loadWafIps();
+  } catch (err) {
+    showAlert(err.message);
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1301,6 +1503,7 @@ function activateTab(name) {
     loadAudit().catch(() => {});
   } else if (name === 'waf') {
     loadWaf().catch(() => {});
+    loadWafIps().catch(() => {});
   }
 }
 
@@ -1322,6 +1525,7 @@ async function refreshAll() {
     Promise.resolve(loadAnalytics()).catch(err => showAlert('Falha ao carregar analytics: ' + err.message)),
     Promise.resolve(loadUserMetrics()).catch(err => showAlert('Falha ao carregar métricas de usuários: ' + err.message)),
     Promise.resolve(loadWaf()).catch(err => showAlert('Falha ao carregar segurança (WAF): ' + err.message)),
+    Promise.resolve(loadWafIps()).catch(err => showAlert('Falha ao carregar IPs (WAF): ' + err.message)),
   ]);
 }
 
@@ -1350,11 +1554,23 @@ bindLoadButton(loadAnalyticsBtn, () => loadAnalytics().catch(err => showAlert(er
 bindLoadButton(loadUserMetricsBtn, () => loadUserMetrics().catch(err => showAlert(err.message)));
 bindLoadButton(loadAuditBtn, () => loadAudit().catch(err => showAlert(err.message)));
 bindLoadButton(refreshWafBtn, () => loadWaf().catch(err => showAlert(err.message)));
+bindLoadButton(reloadWafIpsBtn, () => loadWafIps().catch(err => showAlert(err.message)));
 bindDownloadButton(document.getElementById('exportAnalyticsBtn'), exportAnalyticsCsv);
 bindDownloadButton(document.getElementById('exportAuditBtn'), exportAuditCsv);
 analyticsPeriod?.addEventListener('change', () => loadAnalytics().catch(err => showAlert(err.message)));
 userMetricsPeriod?.addEventListener('change', () => loadUserMetrics().catch(err => showAlert(err.message)));
 auditActionFilter?.addEventListener('change', () => loadAudit().catch(err => showAlert(err.message)));
+
+wafIpSearch?.addEventListener('input', () => {
+  clearTimeout(wafIpsSearchTimer);
+  wafIpsSearchTimer = setTimeout(renderWafIps, 200);
+});
+wafIpStatus?.addEventListener('change', renderWafIps);
+ipBlockModalClose?.addEventListener('click', closeIpBlockModal);
+ipBlockCancelBtn?.addEventListener('click', closeIpBlockModal);
+ipBlockModalOverlay?.addEventListener('click', e => { if (e.target === ipBlockModalOverlay) closeIpBlockModal(); });
+ipSelfConfirmCheck?.addEventListener('change', () => { if (ipBlockConfirmBtn) ipBlockConfirmBtn.disabled = !ipSelfConfirmCheck.checked; });
+ipBlockConfirmBtn?.addEventListener('click', () => confirmIpBlock().catch(err => showAlert(err.message)));
 
 chSelectAll?.addEventListener('change', e => {
   const checked = e.target.checked;
@@ -1429,7 +1645,10 @@ function startRealtimeAdmin() {
       if (tab === 'channels') await loadChannels().catch(() => {});
       if (tab === 'users') await loadUsers().catch(() => {});
       if (tab === 'audit') await loadAudit().catch(() => {});
-      if (tab === 'waf') await loadWaf().catch(() => {});
+      if (tab === 'waf') {
+        await loadWaf().catch(() => {});
+        await loadWafIps().catch(() => {});
+      }
       if (tab === 'metrics' && (analyticsPeriod?.value || 'today') === 'today') {
         await loadAnalytics(true).catch(() => {});
       }

@@ -8,39 +8,12 @@
 'use strict';
 
 const authService = require('../services/authService');
-const googleAuthService = require('../services/googleAuthService');
-const captchaService = require('../services/captchaService');
 const logger = require('../utils/logger');
 const config = require('../config/app');
-const metrics = require('../utils/metrics');
-const { uploadAvatar } = require('../services/avatarService');
+const { validateAvatarUrl } = require('../services/avatarService');
 const { audit } = require('../services/auditService');
 const { passwordResetService, PasswordResetError } = require('../services/passwordResetService');
-
-const _googleStateStore = new Map();
-
-function generateGoogleState() {
-  const crypto = require('crypto');
-  const state = crypto.randomBytes(32).toString('hex');
-  _googleStateStore.set(state, { createdAt: Date.now() });
-  setTimeout(() => _googleStateStore.delete(state), 300_000);
-  return state;
-}
-
-function verifyGoogleState(state) {
-  if (!state || typeof state !== 'string') return false;
-  const entry = _googleStateStore.get(state);
-  if (!entry) return false;
-  _googleStateStore.delete(state);
-  return Date.now() - entry.createdAt < 300_000;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Helper: extrai o IP real considerando proxies
-// ─────────────────────────────────────────────────────────────
-
-const getClientIp = (req) =>
-  req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || req.ip;
+const { getClientIp } = require('../utils/ipAddress');
 
 // ─────────────────────────────────────────────────────────────
 // Helper: define o cookie de sessão na resposta
@@ -68,6 +41,9 @@ const authController = {
   async register(req, res, next) {
     try {
       const { name, email, password, confirmPassword, acceptedTerms, avatar } = req.body;
+      // IP real coletado no servidor (backend-side, NUNCA aceito do frontend).
+      // Guardado em users.registration_ip para auditoria e blocklist WAF.
+      const ip = getClientIp(req);
 
       const result = await authService.register({
         name,
@@ -76,6 +52,7 @@ const authController = {
         confirmPassword,
         acceptedTerms,
         avatar,
+        registrationIp: ip,
       });
 
       setSessionCookie(res, result.sessionToken);
@@ -97,7 +74,7 @@ const authController = {
 
       return res.status(201).json({
         success: true,
-        message: 'Conta criada com sucesso! Guarde seu token de API em local seguro.',
+        message: 'Conta criada com sucesso!',
         data: {
           user: result.user,
           sessionToken: result.sessionToken,
@@ -134,7 +111,7 @@ const authController = {
 
       return res.status(200).json({
         success: true,
-        message: 'Login realizado com sucesso.',
+        message: 'Login realizado com sucesso!',
         data: {
           user: result.user,
           sessionToken: result.sessionToken,
@@ -204,45 +181,31 @@ const authController = {
 
   /**
    * PUT /auth/profile
-   * Atualiza nome e/ou avatar do usuário autenticado.
+   * Atualiza nome e/ou avatar (URL externa HTTPS) do usuário autenticado.
+   * `avatar: ''` limpa o avatar personalizado (volta ao Google, se houver).
    * Requer: requireSessionAuth
    */
   async updateProfile(req, res, next) {
     try {
-      const updatedUser = await authService.updateProfile(req.user._id, req.body);
+      const data = { ...req.body };
+
+      // Avatar é URL externa validada (migração v2.0.1 — não há mais upload).
+      // Vazio = limpar avatar personalizado (avatarSource volta a 'google'
+      // quando o usuário tem Google vinculado).
+      if (data.avatar !== undefined) {
+        if (String(data.avatar).trim() === '') {
+          data.avatar = '';
+        } else {
+          data.avatar = await validateAvatarUrl(data.avatar);
+        }
+      }
+
+      const updatedUser = await authService.updateProfile(req.user._id, data);
 
       return res.status(200).json({
         success: true,
         message: 'Perfil atualizado com sucesso.',
         data: { user: updatedUser },
-      });
-    } catch (err) {
-      if (err.statusCode) {
-        return res.status(err.statusCode).json({ success: false, message: err.message });
-      }
-      next(err);
-    }
-  },
-
-  /**
-   * POST /auth/avatar
-   * Envia avatar para o Supabase Storage e atualiza o perfil do usuário.
-   * Requer: requireSessionAuth
-   */
-  async uploadAvatar(req, res, next) {
-    try {
-      const avatarUrl = await uploadAvatar({
-        file: req.file,
-        imageUrl: req.body?.imageUrl,
-        userId: req.user._id,
-      });
-
-      const updatedUser = await authService.updateProfile(req.user._id, { avatar: avatarUrl });
-
-      return res.status(200).json({
-        success: true,
-        message: 'Avatar atualizado com sucesso.',
-        data: { avatar: avatarUrl, user: updatedUser },
       });
     } catch (err) {
       if (err.statusCode) {
@@ -275,7 +238,7 @@ const authController = {
 
       return res.status(200).json({
         success: true,
-        message: 'Senha alterada com sucesso. As demais sessões ativas foram encerradas.',
+        message: 'Senha alterada com sucesso.',
       });
     } catch (err) {
       if (err.statusCode) {
@@ -294,7 +257,7 @@ const authController = {
     try {
       const newToken = await authService.regenerateApiToken(req.user._id);
 
-      logger.info(`🔄 Token regenerado para o usuário: ${req.user.email}`);
+      logger.info(`Novo token gerado para o usuário: ${req.user.email}`);
 
       audit({
         action: 'auth.regenerate_api_token',
@@ -305,7 +268,7 @@ const authController = {
 
       return res.status(200).json({
         success: true,
-        message: 'API token regenerado com sucesso. O token anterior foi revogado.',
+        message: 'API token regenerado com sucesso.',
         data: { apiToken: newToken },
       });
     } catch (err) {
@@ -356,7 +319,7 @@ const authController = {
         // Mensagem já genérica no serviço — NUNCA diferencia motivo.
         return res.status(400).json({ success: false, message: err.message });
       }
-      logger.warn(`🔒 Falha inesperada na redefinição de senha: ${err && err.message}`);
+      logger.warn(`Falha inesperada na redefinição de senha: ${err && err.message}`);
       return res.status(500).json({
         success: false,
         message: 'Não foi possível concluir a operação. Tente novamente em instantes.',
@@ -369,88 +332,6 @@ const authController = {
    * Revoga TODAS as sessões do usuário (bump de sessionVersion) e limpa o
    * cookie. Tokens de sessão emitidos antes deixam de ser aceitos.
    */
-  async generateGoogleState(req, res, next) {
-    try {
-      if (!process.env.GOOGLE_CLIENT_ID) {
-        return res.status(503).json({ success: false, message: 'Google OAuth não configurado.' });
-      }
-      const state = generateGoogleState();
-      res.status(200).json({ success: true, data: { state } });
-    } catch (err) { next(err); }
-  },
-
-  async googleCallback(req, res, next) {
-    try {
-      const { code, state } = req.query;
-      const callbackUrl = config.app.baseUrl || 'http://localhost:3000';
-      if (!code || !state || !verifyGoogleState(state)) {
-        return res.status(400).json({ success: false, message: 'Estado inválido ou expirado.' });
-      }
-      return res.redirect(`${callbackUrl}/login?google=1&state=${state}`);
-    } catch (err) { logger.error(`[googleCallback] ${err.message}`); next(err); }
-  },
-
-  async googleLogin(req, res, next) {
-    try {
-      const { code, state } = req.body;
-      if (!code || !state || !verifyGoogleState(state)) {
-        return res.status(400).json({ success: false, message: 'Estado inválido ou expirado.' });
-      }
-      const { tokens } = await googleAuthService.exchangeCodeForToken(code);
-      if (!tokens?.access_token) {
-        return res.status(401).json({ success: false, message: 'Autenticação Google falhou.' });
-      }
-      const googleInfo = await googleAuthService.getGoogleUserInfo(tokens.access_token);
-      if (!googleInfo?.email) {
-        return res.status(401).json({ success: false, message: 'Informações do Google indisponíveis.' });
-      }
-      googleInfo.verifiedEmail = googleInfo.verifiedEmail || false;
-      const { user, created } = await googleAuthService.findOrCreateUser(googleInfo);
-      const sessionToken = googleAuthService.generateSessionToken(user);
-      logger.info(`[googleLogin] ${user.email}`);
-      metrics.inc('google.login');
-      audit({ action: 'auth.google.login', req, userId: user._id, email: user.email, meta: { created } });
-      setSessionCookie(res, sessionToken);
-      return res.status(200).json({ success: true, message: 'Login via Google realizado.', data: { user: user.toJSON(), sessionToken } });
-    } catch (err) { logger.error(`[googleLogin] ${err.message}`); next(err); }
-  },
-
-  async googleRegister(req, res, next) {
-    try {
-      const { code, state, acceptedTerms } = req.body;
-      if (!code || !state || !verifyGoogleState(state)) {
-        return res.status(400).json({ success: false, message: 'Estado inválido ou expirado.' });
-      }
-      if (acceptedTerms !== true) { return res.status(422).json({ success: false, message: 'Aceite os Termos de Uso.' }); }
-      const { tokens } = await googleAuthService.exchangeCodeForToken(code);
-      if (!tokens?.access_token) {
-        return res.status(401).json({ success: false, message: 'Autenticação Google falhou.' });
-      }
-      const googleInfo = await googleAuthService.getGoogleUserInfo(tokens.access_token);
-      if (!googleInfo?.email) {
-        return res.status(401).json({ success: false, message: 'Informações do Google indisponíveis.' });
-      }
-      googleInfo.verifiedEmail = googleInfo.verifiedEmail || false;
-      const { user, created } = await googleAuthService.findOrCreateUser(googleInfo);
-      const sessionToken = googleAuthService.generateSessionToken(user);
-      logger.info(`[googleRegister] ${user.email}`);
-      metrics.inc('google.register');
-      audit({ action: 'auth.google.register', req, userId: user._id, email: user.email, meta: { created } });
-      setSessionCookie(res, sessionToken);
-      return res.status(created ? 201 : 200).json({ success: true, message: created ? 'Conta criada via Google.' : 'Login via Google realizado.', data: { user: user.toJSON(), sessionToken } });
-    } catch (err) { logger.error(`[googleRegister] ${err.message}`); next(err); }
-  },
-
-  async getGoogleAuthUrl(req, res, next) {
-    try {
-      const clientId = process.env.GOOGLE_CLIENT_ID;
-      if (!clientId) { return res.status(503).json({ success: false, message: 'Google OAuth não configurado.' }); }
-      const state = generateGoogleState();
-      const params = new URLSearchParams({ client_id: clientId, redirect_uri: process.env.GOOGLE_REDIRECT_URI || '', response_type: 'code', scope: 'openid email profile', state, access_type: 'offline', prompt: 'consent' });
-      res.status(200).json({ success: true, data: { authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, state } });
-    } catch (err) { next(err); }
-  },
-
   async logout(req, res, next) {
     try {
       if (req.user?._id) {

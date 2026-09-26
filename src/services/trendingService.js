@@ -5,8 +5,12 @@ const logger = require('../utils/logger');
 const { assertSafeTarget } = require('./ssrfGuard');
 const { inc, recordTrendingLatency } = require('../utils/metrics');
 
-const DEFAULT_LIMIT = 10;
+const DEFAULT_LIMIT = 20;
 
+// Taxonomia de gêneros do CATÁLOGO AO VIVO do provedor. Cuidado: nomes como
+// "Filme Ação" e "Séries Policial" são o gênero do canal ao vivo (o canal
+// transmite aquele conteúdo), NÃO seções de filmes/séries do app — remover
+// estas entradas esvazia a query.
 const LIVE_GENRES = [
   'Filme Ação',
   'Filme Comédia',
@@ -16,52 +20,26 @@ const LIVE_GENRES = [
   'Filme Romance',
   'Filme Suspense',
   'Filme Drama',
-  'Infantil Programa',
-  'Variedades Diversos',
-  'Jornalismo Esportivo',
-  'Jornalismo Informativo',
   'Séries Policial',
-  'Documentário Diversos',
-  'Esporte Futebol',
-  'Infantil Desenho',
-  'Infantil Diversos',
 ];
 
-const MOVIE_QUERY = `
-  {
-    trecResults: recommendationsPopularity(period: 7, limit: 10, genres: [], type: "movies") {
-      movies {
-        id
-        nowContentId
-        title
-        rating { description }
-        runTime
-        description { short }
-        assets { ratio url category }
-      }
-    }
-  }
-`;
+  // Gerenos removidos do filtro ao vivo.
+  // 'Infantil Programa',
+  // 'Variedades Diversos',
+  // 'Jornalismo Esportivo',
+  // 'Jornalismo Informativo',
+  // 'Documentário Diversos',
+  // 'Esporte Futebol',
+  // 'Infantil Desenho',
+  // 'Infantil Diversos',
 
-const SERIE_QUERY = `
+// Só "Ao vivo em alta" (programações mais assistidas agora). Cada liveCatalog
+// traz a arte da programação em vários tamanhos: 4 paisagem (212x119 … 408x230)
+// e 5 retrato (~2:3: 129x194 … 360x540). O tamanho vem no assetId
+// (`…_epg212x119`) e no path da URL (`/images_epg/360_540/…`).
+const CHANNELS_QUERY = `
   {
-    recResults: recommendationsPopularity(period: 7, limit: 10, genres: [], type: "series") {
-      series {
-        id
-        nowContentId
-        title
-        rating { description }
-        runTime
-        description { short }
-        assets { ratio url category }
-      }
-    }
-  }
-`;
-
-const channelQuery = (genres) => `
-  {
-    trecResults: LiveRecommendationsPopularityNearRealTime(limit: 10, genres: ${JSON.stringify(genres)}, channels: []) {
+    trecResults: LiveRecommendationsPopularityNearRealTime(limit: ${DEFAULT_LIMIT}, genres: ${JSON.stringify(LIVE_GENRES)}, channels: []) {
       liveCatalogs {
         id
         name
@@ -72,18 +50,15 @@ const channelQuery = (genres) => `
         genre
         assets { url assetId }
       }
-      position
-      totalCount
     }
   }
 `;
 
 /**
- * Serviço de Tendências (Top 10) — catálogo externo de metadados em memória.
+ * Serviço de Tendências — SOMENTE programações ao vivo em alta.
  *
- * Consulta um GraphQL do provedor de catálogo para alimentar os carrosséis
- * da dashboard: filmes/séries mais assistidos (period: 7) e programações ao
- * vivo em alta (LiveRecommendationsPopularityNearRealTime).
+ * Consulta um GraphQL do provedor de catálogo (LiveRecommendationsPopularityNearRealTime)
+ * para alimentar o carrossel "Ao vivo em alta" da dashboard.
  *
  * Princípios (mesmos do EPG):
  *  - `TRENDING_API_URL` (por padrão a URL do provedor) NUNCA é logada nem
@@ -102,8 +77,8 @@ class TrendingService {
     this.cacheTtlMs = Number(config.trending.cacheTtlMs) || 1_800_000;
     this.fetchTimeoutMs = Number(config.trending.fetchTimeoutMs) || 10_000;
 
-    // Cache em memória por seção (só substitui em caso de sucesso).
-    this.sections = { movies: [], series: [], channels: [] };
+    // Cache em memória (só substitui em caso de sucesso).
+    this.channels = [];
     this.lastFetchedAt = 0;
     this.lastError = null; // { type, message } SEM URL/host de provedor
     this._fetchPromise = null;
@@ -119,7 +94,7 @@ class TrendingService {
   }
 
   hasData() {
-    return Object.values(this.sections).some((list) => list.length > 0);
+    return this.channels.length > 0;
   }
 
   // ── Requisição GraphQL (isolada para stubbing em teste) ────
@@ -134,20 +109,8 @@ class TrendingService {
     return response.data;
   }
 
-  async _fetchMovies() {
-    const data = await this._postGraphQL({ query: MOVIE_QUERY });
-    const raw = (data && data.data && data.data.trecResults && data.data.trecResults.movies) || [];
-    return raw.map(normalizeItem(normalizeMovie)).filter(Boolean).slice(0, DEFAULT_LIMIT);
-  }
-
-  async _fetchSeries() {
-    const data = await this._postGraphQL({ query: SERIE_QUERY });
-    const raw = (data && data.data && data.data.recResults && data.data.recResults.series) || [];
-    return raw.map(normalizeItem(normalizeSeries)).filter(Boolean).slice(0, DEFAULT_LIMIT);
-  }
-
   async _fetchChannels() {
-    const data = await this._postGraphQL({ query: channelQuery(LIVE_GENRES) });
+    const data = await this._postGraphQL({ query: CHANNELS_QUERY });
     const raw = (data && data.data && data.data.trecResults && data.data.trecResults.liveCatalogs) || [];
     return raw.map(normalizeItem(normalizeChannel)).filter(Boolean).slice(0, DEFAULT_LIMIT);
   }
@@ -160,49 +123,32 @@ class TrendingService {
 
     const startedAt = Date.now();
     inc('trendingFetches');
-    const [movies, series, channels] = await Promise.allSettled([
-      this._fetchMovies(),
-      this._fetchSeries(),
-      this._fetchChannels(),
-    ]);
 
-    const results = { enabled: true, movies: 'empty', series: 'empty', channels: 'empty', cached: this.hasData() };
-    const errors = [];
-
-    const commit = (key, settled) => {
-      if (settled.status === 'fulfilled') {
-        this.sections[key] = settled.value;
-        results[key] = 'ok';
-      } else {
-        inc('trendingFetchFailures');
-        const type = this._safeErrorType(settled.reason);
-        errors.push(type);
-        results[key] = type;
-      }
-    };
-    commit('movies', movies);
-    commit('series', series);
-    commit('channels', channels);
-
-    // Enquanto ao menos uma seção teve sucesso, o cache é renovado; se todas
-    // falharam, lastFetchedAt não avança e o TTL volta a expirar no próximo
-    // get (evita hammer na origem com dados velhos).
-    if (movies.status === 'fulfilled' || series.status === 'fulfilled' || channels.status === 'fulfilled') {
-      this.lastFetchedAt = Date.now();
+    let result = 'ok';
+    try {
+      this.channels = await this._fetchChannels();
+    } catch (err) {
+      inc('trendingFetchFailures');
+      result = this._safeErrorType(err);
     }
-    if (errors.length > 0) {
-      this.lastError = { type: errors[0], message: this._safeErrorMessage(errors[0]) };
-      if (this.hasData()) {
-        logger.warn('[trendingService] falha parcial ao renovar tendências — mantendo cache anterior');
-      } else {
-        logger.warn('[trendingService] falha ao buscar tendências (sem cache anterior) — seções vazias temporariamente');
-      }
-    } else {
+
+    // Só renova o TTL quando houve sucesso: se falhou, lastFetchedAt não avança
+    // e o TTL volta a expirar no próximo get (evita hammer na origem, mas
+    // também permite recuperar rápido). O cache anterior permanece intacto.
+    if (result === 'ok') {
+      this.lastFetchedAt = Date.now();
       this.lastError = null;
+    } else {
+      this.lastError = { type: result, message: this._safeErrorMessage(result) };
+      if (this.hasData()) {
+        logger.warn('[trendingService] falha ao renovar tendencias ao vivo — mantendo cache anterior');
+      } else {
+        logger.warn('[trendingService] falha ao buscar tendencias ao vivo (sem cache anterior) — secao vazia temporariamente');
+      }
     }
 
     recordTrendingLatency(Date.now() - startedAt);
-    return results;
+    return { enabled: true, channels: result, cached: this.hasData() };
   }
 
   _safeErrorType(err) {
@@ -245,39 +191,19 @@ class TrendingService {
   }
 
   // ── Leitura ───────────────────────────────────────────────
-  getMovies({ force } = {}) {
-    if (force) return this.sections.movies;
-    if (this.isStale()) void this.ensureLoaded();
-    return this.sections.movies;
-  }
-
-  getSeries({ force } = {}) {
-    if (force) return this.sections.series;
-    if (this.isStale()) void this.ensureLoaded();
-    return this.sections.series;
-  }
-
   getChannels({ force } = {}) {
-    if (force) return this.sections.channels;
+    if (force) return this.channels;
     if (this.isStale()) void this.ensureLoaded();
-    return this.sections.channels;
+    return this.channels;
   }
 
   getSnapshot({ force } = {}) {
-    const sections = {
-      movies: this.getMovies({ force }),
-      series: this.getSeries({ force }),
-      channels: this.getChannels({ force }),
-    };
+    const channels = this.getChannels({ force });
     return {
       fetchedAt: this.lastFetchedAt ? new Date(this.lastFetchedAt).toISOString() : null,
       cached: this.hasData(),
-      total: {
-        movies: sections.movies.length,
-        series: sections.series.length,
-        channels: sections.channels.length,
-      },
-      ...sections,
+      total: { channels: channels.length },
+      channels,
     };
   }
 
@@ -290,9 +216,7 @@ class TrendingService {
     return {
       enabled: this.enabled,
       configured: Boolean(this.apiUrl),
-      movies: this.sections.movies.length,
-      series: this.sections.series.length,
-      channels: this.sections.channels.length,
+      channels: this.channels.length,
       lastFetchedAt: this.lastFetchedAt || null,
       lastError: this.lastError,
     };
@@ -313,42 +237,6 @@ function normalizeItem(normalizer) {
   };
 }
 
-function normalizeMovie(item) {
-  if (!item || !item.title) return null;
-  const assets = Array.isArray(item.assets) ? item.assets : [];
-  const best = pickAsset(assets);
-  return {
-    id: stringOr(item.id, ''),
-    nowContentId: stringOr(item.nowContentId, undefined),
-    title: stringOr(item.title, ''),
-    rating: stringOr(item.rating && item.rating.description, ''),
-    runTime: formatRuntime(item.runTime),
-    description: stringOr(item.description && item.description.short, ''),
-    image: best ? best.url : '',
-    images: assets
-      .map((a) => ({ ratio: stringOr(a.ratio, ''), url: stringOr(a.url, ''), category: stringOr(a.category, '') }))
-      .filter((a) => a.url),
-  };
-}
-
-function normalizeSeries(item) {
-  if (!item || !item.title) return null;
-  const assets = Array.isArray(item.assets) ? item.assets : [];
-  const best = pickAsset(assets);
-  return {
-    id: stringOr(item.id, ''),
-    nowContentId: stringOr(item.nowContentId, undefined),
-    title: stringOr(item.title, ''),
-    rating: stringOr(item.rating && item.rating.description, ''),
-    runTime: formatRuntime(item.runTime),
-    description: stringOr(item.description && item.description.short, ''),
-    image: best ? best.url : '',
-    images: assets
-      .map((a) => ({ ratio: stringOr(a.ratio, ''), url: stringOr(a.url, ''), category: stringOr(a.category, '') }))
-      .filter((a) => a.url),
-  };
-}
-
 function normalizeChannel(item) {
   if (!item || !item.id) return null;
   const assets = Array.isArray(item.assets) ? item.assets : [];
@@ -360,51 +248,55 @@ function normalizeChannel(item) {
     genre: stringOr(item.genre, ''),
     genreCategory: stringOr(item.genreCategory, ''),
     channelName: stringOr(item.channelName, ''),
-    logo: stringOr(firstUrl(assets), ''),
+    // Arte da programação (pôster ~2:3). Ver `pickProgramImage`.
+    image: pickProgramImage(assets),
   };
 }
 
-/**
- * Escolhe a melhor imagem de catálogo para o card:
- *  1. categoria/rácio de poster/portrait (2:3 / 3:4 / "poster")
- *  2. paisagem 16:9 ("16x9"/"wide"/"landscape")
- *  3. qualquer outra (primeira)
- */
-function pickAsset(assets) {
-  if (!Array.isArray(assets) || assets.length === 0) return null;
-  const poster = assets.find((a) => /poster|portrait|[23]:[34]|2x3|3x4/i.test(`${a.category || ''} ${a.ratio || ''}`));
-  if (poster) return poster;
-  const wide = assets.find((a) => /16x9|16:9|wide|landscape|backdrop|feature/i.test(`${a.category || ''} ${a.ratio || ''}`));
-  return wide || assets[0];
+// O provedor devolve a MESMA arte em vários tamanhos. A ordem do array NÃO é
+// garantida e a primeira entrada costuma ser a faixa paisagem (212x119),
+// que num card vertical ficaria minúscula. Preferimos retrato ~2:3.
+const TARGET_RATIO = 2 / 3;
+
+function assetSize(asset) {
+  if (!asset || typeof asset !== 'object') return null;
+  // assetId: "0001546602_epg360x540"  |  url: ".../images_epg/360_540/....jpg"
+  // O hint pode estar no fim da string, daí o `(?:[^\d]|$)`.
+  const m =
+    /(?:^|[^\d])(\d{2,4})x(\d{2,4})(?:[^\d]|$)/.exec(String(asset.assetId || '')) ||
+    /\/(\d{2,4})_(\d{2,4})(?:[/.]|$)/.exec(String(asset.url || ''));
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!w || !h) return null;
+  return { w, h, ratio: w / h };
 }
 
-function firstUrl(assets) {
-  if (!Array.isArray(assets)) return '';
-  const first = assets.find((a) => a && a.url);
-  return first ? first.url : '';
-}
+function pickProgramImage(assets) {
+  const usable = (Array.isArray(assets) ? assets : []).filter((a) => a && a.url);
+  if (usable.length === 0) return '';
 
-/**
- * Formata duração: aceita ISO 8601 (`PT2H11M`), minutos numéricos ou texto.
- * Devolve algo amigável ("2h 11min", "57min") ou '' quando vazio.
- */
-function formatRuntime(runTime) {
-  if (runTime == null || runTime === '') return '';
-  const s = String(runTime).trim();
-  const iso = s.match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  if (iso) {
-    const h = iso[2] ? parseInt(iso[2], 10) : 0;
-    const m = iso[3] ? parseInt(iso[3], 10) : 0;
-    if (h > 0) return `${h}h ${m}min`;
-    return m > 0 ? `${m}min` : '';
+  const sized = usable
+    .map((a) => ({ asset: a, size: assetSize(a) }))
+    .filter((x) => x.size);
+
+  // Retrato primeiro (o card é vertical), depois o mais próximo de 2:3, e
+  // entre equivalentes o maior (melhor nitidez sem exagero de banda).
+  const portrait = sized.filter((x) => x.size.ratio < 1);
+  const pool = portrait.length > 0 ? portrait : sized;
+  if (pool.length > 0) {
+    const best = pool.reduce((acc, x) => {
+      if (!acc) return x;
+      const dAcc = Math.abs(acc.size.ratio - TARGET_RATIO);
+      const dNew = Math.abs(x.size.ratio - TARGET_RATIO);
+      if (dAcc !== dNew) return dNew < dAcc ? x : acc;
+      return x.size.w * x.size.h > acc.size.w * acc.size.h ? x : acc;
+    }, null);
+    return String(best.asset.url);
   }
-  const n = Number(s);
-  if (Number.isFinite(n) && s !== '') {
-    const total = Math.max(0, Math.round(n));
-    if (total >= 60) return `${Math.floor(total / 60)}h ${total % 60}min`;
-    return `${total}min`;
-  }
-  return s;
+
+  // Sem metadados de tamanho: primeiro asset com URL.
+  return String(usable[0].url);
 }
 
 function stringOr(v, fallback) {

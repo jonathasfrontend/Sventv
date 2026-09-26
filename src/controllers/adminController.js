@@ -7,6 +7,9 @@ const ChannelHealthService = require('../services/channelHealthService');
 const ChannelStateService = require('../services/channelStateService');
 const channelStateRepository = require('../repositories/channelStateRepository');
 const channelHealthRepository = require('../repositories/channelHealthRepository');
+const ipBlocklistRepository = require('../repositories/ipBlocklistRepository');
+const IpBlocklistService = require('../services/ipBlocklistService');
+const { normalizeIp } = require('../utils/ipAddress');
 const playbackService = require('../services/playbackService');
 const retentionService = require('../services/retentionService');
 const { audit } = require('../services/auditService');
@@ -18,7 +21,7 @@ const userMetricsService = require('../services/userMetricsService');
 const { resolveRange } = require('../utils/analytics');
 const config = require('../config/app');
 const User = require('../models/User');
-const { uploadAvatar } = require('../services/avatarService');
+const { validateAvatarUrl } = require('../services/avatarService');
 const { serializeAdminUser, serializeAdminUserList } = require('../utils/adminUserSerializer');
 const { normalizeEmail } = require('../repositories/userRepository');
 const { passwordPolicyErrors } = require('../utils/passwordPolicy');
@@ -46,12 +49,14 @@ const PUBLIC_USER_SELECT = {
   name: true,
   email: true,
   avatar: true,
+  googleAvatarUrl: true,
   role: true,
   status: true,
   accountRestricted: true,
   restrictedReason: true,
   lastLogin: true,
   lastLoginIp: true,
+  registrationIp: true,
   termsAcceptedAt: true,
   termsVersion: true,
   createdAt: true,
@@ -60,6 +65,40 @@ const PUBLIC_USER_SELECT = {
 
 const getTargetUser = async (userId) =>
   prisma.user.findUnique({ where: { id: userId } });
+
+// IPs conhecidos de um usuário (cadastro + último login), normalizados e
+// deduplicados (o mesmo IP em ambas as fontes vira UMA entrada com as duas).
+// `user` pode ser linha crua do Prisma ou instância do User model.
+const buildUserIps = (user) => {
+  const raw = [user.registrationIp, user.lastLoginIp];
+  const map = new Map();
+  for (const sourceIp of raw) {
+    if (!sourceIp) continue;
+    const ip = normalizeIp(sourceIp);
+    if (!ip) continue;
+    const source = sourceIp === user.registrationIp ? 'registration' : 'lastLogin';
+    const entry = map.get(ip) || { ip, sources: [] };
+    if (!entry.sources.includes(source)) entry.sources.push(source);
+    map.set(ip, entry);
+  }
+  return Array.from(map.values());
+};
+
+// Resolve o IP alvo da ação admin: IP explícito (deve pertencer ao usuário)
+// ou, na ausência, o IP de cadastro || último login.
+const resolveUserIp = (user, rawIp) => {
+  const known = buildUserIps(user).map((r) => r.ip);
+  if (rawIp) {
+    const ip = normalizeIp(rawIp);
+    return ip && known.includes(ip) ? ip : null;
+  }
+  return buildUserIps(user).sort((a, b) => {
+    // prioriza o de cadastro (origem da conta) quando ambos existem.
+    if (a.sources.includes('registration')) return -1;
+    if (b.sources.includes('registration')) return 1;
+    return 0;
+  })[0]?.ip || null;
+};
 
 const countActiveAdmins = () =>
   prisma.user.count({ where: { role: 'admin', status: 'active' } });
@@ -435,13 +474,15 @@ const adminController = {
 
   /**
    * PUT /admin/users/:userId/profile
-   * Atualiza nome e/ou e-mail do alvo (whitelist). Unicidade de e-mail
-   * verificada com pré-check + catch de P2002 (corrida → 409).
+   * Atualiza nome, e-mail e/ou avatar do alvo (whitelist). Unicidade de
+   * e-mail verificada com pré-check + catch de P2002 (corrida → 409).
+   * Avatar é URL externa HTTPS validada (migração v2.0.1 — sem upload);
+   * `''` limpa o avatar personalizado (volta ao Google, se houver).
    */
   async updateProfile(req, res, next) {
     try {
       const { userId } = req.params;
-      const { name, email } = req.body;
+      const { name, email, avatar } = req.body;
 
       const target = await getTargetUser(userId);
       if (!target) return userNotFound(res);
@@ -463,6 +504,11 @@ const adminController = {
           data.email = normalized;
           changed.push('email');
         }
+      }
+
+      if (avatar !== undefined) {
+        data.avatar = String(avatar).trim() === '' ? '' : await validateAvatarUrl(avatar);
+        changed.push('avatar');
       }
 
       if (!changed.length) {
@@ -498,6 +544,18 @@ const adminController = {
         email: target.email,
         meta,
       });
+
+      // Trilha dedicada quando a mudança é o avatar (paridade com a rota
+      // antiga de upload, removida na migração).
+      if (changed.includes('avatar')) {
+        audit({
+          action: 'admin.user.avatar_updated',
+          req,
+          userId,
+          email: target.email,
+          meta: { by: req.user?.email },
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -548,53 +606,6 @@ const adminController = {
       return res.status(200).json({
         success: true,
         message: 'Senha redefinida com sucesso. As sessões do usuário foram encerradas.',
-      });
-    } catch (error) {
-      return next(error);
-    }
-  },
-
-  /**
-   * POST /admin/users/:userId/avatar
-   * Upload do avatar (multipart `avatar` OU campo `imageUrl`). Reusa o
-   * avatarService (magic bytes + SSRF guard) e gravita o caminho no storage
-   * por `userId` do alvo.
-   */
-  async uploadAvatar(req, res, next) {
-    try {
-      const { userId } = req.params;
-
-      const target = await getTargetUser(userId);
-      if (!target) return userNotFound(res);
-
-      if (!req.file && !req.body?.imageUrl) {
-        return res.status(422).json({ success: false, message: 'Envie um arquivo ou informe uma URL de imagem.' });
-      }
-
-      const avatarUrl = await uploadAvatar({
-        file: req.file,
-        imageUrl: req.body?.imageUrl,
-        userId: target.id,
-      });
-
-      const user = await prisma.user.update({
-        where: { id: userId },
-        data: { avatar: avatarUrl },
-        select: PUBLIC_USER_SELECT,
-      });
-
-      audit({
-        action: 'admin.user.avatar_updated',
-        req,
-        userId,
-        email: target.email,
-        meta: { by: req.user?.email },
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: 'Avatar atualizado com sucesso.',
-        data: { avatar: avatarUrl, user: serializeAdminUser(user) },
       });
     } catch (error) {
       return next(error);
@@ -854,7 +865,7 @@ const adminController = {
   /**
    * GET /admin/waf
    *
-   * Status consolidado do WAF + CAPTCHA + OAuth Google para o painel:
+   * Status consolidado do WAF + OAuth Google para o painel:
    * contadores (por lambda/processo), IPs bloqueados manualmente (env
    * WAF_BLOCKED_IPS) e os eventos de segurança mais recentes persistidos
    * em audit_logs (ações `security.*`, últimas 24h agregadas + últimos 50).
@@ -903,6 +914,11 @@ const adminController = {
         eventCounts[g.action] = g._count.action;
       }
 
+      let blockedCount = 0;
+      try {
+        blockedCount = await ipBlocklistRepository.countActive();
+      } catch (_) { /* fail-open: mantém 0 */ }
+
       return res.status(200).json({
         success: true,
         data: {
@@ -912,20 +928,250 @@ const adminController = {
             wafBlockedIp: counters.wafBlockedIp,
             wafRateLimited: counters.wafRateLimited,
             securityBlocks: counters.securityBlocks,
-            captchaSuccesses: counters.captchaSuccesses,
-            captchaFailures: counters.captchaFailures,
+            ipAccessBlocked: counters.ipAccessBlocked,
+            ipAccessBlocksAdmin: counters.ipAccessBlocksAdmin,
+            ipAccessUnblocksAdmin: counters.ipAccessUnblocksAdmin,
+            ipBlocklistCacheHits: counters.ipBlocklistCacheHits,
+            ipBlocklistCacheMisses: counters.ipBlocklistCacheMisses,
+            ipBlocklistFallbacks: counters.ipBlocklistFallbacks,
+            ipBlocklistPersistenceFailures: counters.ipBlocklistPersistenceFailures,
+          },
+          ipAccess: {
+            enabled: Boolean(config.ipAccess.enabled),
+            blockedCount,
+            cacheTtlMs: config.ipAccess.cacheTtlMs,
           },
           google: {
             login: counters['google.login'],
             register: counters['google.register'],
             userCreated: counters['google.userCreated'],
             failures: counters['google.failure'],
+            loginDenied: counters['google.loginDenied'],
+            registrationRejected: counters['google.registrationRejected'],
             idMismatch: counters['googleIdMismatch'],
           },
           blockedIps,
           recentEvents,
           eventCounts,
         },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * GET /admin/waf/ips?page=&limit=&search=&ipStatus=
+   * Lista usuários com seus IPs (cadastro + último login) e o estado de
+   * bloqueio por IP (blocklist WAF persistente). DTO whitelist: IPs SÓ são
+   * expostos a admin (auth do router). Busca por nome/e-mail/IP.
+   */
+  async listWafIps(req, res, next) {
+    try {
+      const page = Math.max(1, Number(req.query.page || 1));
+      const limit = Math.min(500, Math.max(1, Number(req.query.limit || 50)));
+      const skip = (page - 1) * limit;
+
+      const where = {};
+      const search = String(req.query.search || '').trim();
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { registrationIp: { contains: search } },
+          { lastLoginIp: { contains: search } },
+        ];
+      }
+      const ipStatus = String(req.query.ipStatus || '').trim();
+      if (ipStatus === 'blocked' || ipStatus === 'unblocked') {
+        // Filtro por estado de bloqueio acontece em memória (abaixo) — o
+        // banco não guarda IPs numa forma correlacionável por status.
+      }
+
+      const [items, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          select: PUBLIC_USER_SELECT,
+        }),
+        prisma.user.count({ where }),
+      ]);
+
+      // Fonte de verdade do bloqueio (Postgres), independente do cache local
+      // das lambdas — o painel precisa do estado GLOBAL.
+      const activeRows = await ipBlocklistRepository.loadActive().catch(() => []);
+      const blockedMap = new Map();
+      for (const row of activeRows) {
+        blockedMap.set(row.ip, {
+          reason: row.reason || '',
+          blockedBy: row.blockedBy || null,
+          blockedAt: row.blockedAt ? new Date(row.blockedAt).toISOString() : null,
+        });
+      }
+
+      let users = items.map((u) => {
+        const ips = buildUserIps(u);
+        const consumers = ips.map(({ ip, sources }) => ({ ip, sources, ...(blockedMap.get(ip) || {}) }));
+        const anyBlocked = consumers.some((c) => Boolean(c.reason || c.blockedBy || c.blockedAt));
+        return {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          status: u.status,
+          accountRestricted: Boolean(u.accountRestricted),
+          restrictedReason: u.restrictedReason || null,
+          lastLogin: u.lastLogin,
+          lastLoginIp: u.lastLoginIp || null,
+          registrationIp: u.registrationIp || null,
+          termsAcceptedAt: u.termsAcceptedAt,
+          termsVersion: u.termsVersion,
+          createdAt: u.createdAt,
+          updatedAt: u.updatedAt,
+          ips: consumers,
+          anyIpBlocked: anyBlocked,
+        };
+      });
+
+      // Filtro por estado de bloqueio (em memória, conforme decisão acima).
+      if (ipStatus) {
+        users = users.filter((u) => (ipStatus === 'blocked' ? u.anyIpBlocked : !u.anyIpBlocked));
+      }
+
+      let blockedCount = blockedMap.size;
+      try {
+        blockedCount = await ipBlocklistRepository.countActive();
+      } catch (_) { /* mantém o tamanho do map */ }
+
+      return res.status(200).json({
+        success: true,
+        data: { users, total: users.length, page, limit, blockedCount },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * PUT /admin/waf/ips/:userId/block
+   * Bloqueia o IP de um usuário (blocklist WAF). Ação por IP, não por conta:
+   * todos os usuários que usarem o mesmo IP são atingidos. Guardas:
+   *   - IP opcional no corpo; se enviado, DEVE pertencer ao usuário alvo;
+   *   - sem IP no corpo, usa registrationIp || lastLoginIp do alvo;
+   *   - anti-self-lockout: bloquear o PRÓPRIO IP exige confirmSelfBlock=true.
+   * Audita `admin.ip_access.block`.
+   */
+  async blockUserIp(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { ip: rawIp, reason = '', confirmSelfBlock = false } = req.body;
+
+      const target = await getTargetUser(userId);
+      if (!target) return userNotFound(res);
+
+      const ip = resolveUserIp(target, rawIp);
+      if (!ip) {
+        return res.status(422).json({
+          success: false,
+          message: rawIp
+            ? 'O IP informado não pertence a este usuário.'
+            : 'Este usuário não possui IP registrado (cadastro ou último login).',
+        });
+      }
+
+      // Anti-self-lockout: decidido sobre o IP do próprio admin (independente
+      // do alvo da rota). Exige confirmação explícita no corpo (confirm() do
+      // navegador NÃO é suficiente — mesma regra de exclusão de usuário).
+      const ownIps = new Set(buildUserIps(req.user).map((r) => r.ip));
+      if (ownIps.has(ip) && confirmSelfBlock !== true) {
+        return res.status(422).json({
+          success: false,
+          message: 'Você está prestes a bloquear o seu próprio IP. Confirme com "confirmSelfBlock": true.',
+        });
+      }
+
+      await IpBlocklistService.getShared().block(ip, {
+        reason,
+        blockedBy: req.user?.email || null,
+      });
+
+      inc('ipAccessBlocksAdmin');
+      audit({
+        action: 'admin.ip_access.block',
+        req,
+        userId,
+        email: target.email,
+        meta: { ip, reason: reason || null, by: req.user?.email || null },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `IP ${ip} bloqueado. Todos os acessos dele (incluindo cadastro/login) foram negados.`,
+        data: { ip },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  /**
+   * PUT /admin/waf/ips/:userId/unblock
+   * Desbloqueia o IP de um usuário. IP no corpo é opcional (deve pertencer
+   * ao alvo); sem ele, desbloqueia o IP de cadastro/último login que estiver
+   * ativamente bloqueado. Audita `admin.ip_access.unblock`.
+   */
+  async unblockUserIp(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { ip: rawIp } = req.body;
+
+      const target = await getTargetUser(userId);
+      if (!target) return userNotFound(res);
+
+      let ip = null;
+      if (rawIp) {
+        ip = resolveUserIp(target, rawIp);
+        if (!ip) {
+          return res.status(422).json({
+            success: false,
+            message: 'O IP informado não pertence a este usuário.',
+          });
+        }
+      } else {
+        // Sem IP explícito: procura um IP do usuário ativamente bloqueado.
+        const known = buildUserIps(target);
+        const activeRows = await ipBlocklistRepository.loadActive().catch(() => []);
+        const activeSet = new Set(activeRows.map((r) => r.ip));
+        const found = known.find((r) => activeSet.has(r.ip));
+        ip = found ? found.ip : null;
+      }
+
+      if (!ip) {
+        return res.status(422).json({
+          success: false,
+          message: 'Nenhum IP deste usuário está bloqueado.',
+        });
+      }
+
+      await IpBlocklistService.getShared().unblock(ip, {
+        unblockedBy: req.user?.email || null,
+      });
+
+      inc('ipAccessUnblocksAdmin');
+      audit({
+        action: 'admin.ip_access.unblock',
+        req,
+        userId,
+        email: target.email,
+        meta: { ip, by: req.user?.email || null },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `IP ${ip} desbloqueado.`,
+        data: { ip },
       });
     } catch (error) {
       return next(error);

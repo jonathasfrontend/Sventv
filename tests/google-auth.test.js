@@ -51,11 +51,21 @@ test('controller: verifica estado antes de procesar callback', () => {
   );
 });
 
-// ── Google Auth Service: findOrCreateUser ──────────────────
+// ── Google Auth Service: loginWithGoogle / registerWithGoogle ──
 
-test('googleAuthService: findOrCreateUser existe', () => {
+test('googleAuthService: loginWithGoogle existe (LOGIN != CADASTRO)', () => {
   const service = require('../src/services/googleAuthService');
-  assert.equal(typeof service.findOrCreateUser, 'function');
+  assert.equal(typeof service.loginWithGoogle, 'function');
+});
+
+test('googleAuthService: registerWithGoogle existe (fluxo explícito de cadastro)', () => {
+  const service = require('../src/services/googleAuthService');
+  assert.equal(typeof service.registerWithGoogle, 'function');
+});
+
+test('googleAuthService: findOrCreateUser não existe mais (misturava auth+create)', () => {
+  const service = require('../src/services/googleAuthService');
+  assert.equal(typeof service.findOrCreateUser, 'undefined');
 });
 
 test('googleAuthService: generateSessionToken existe', () => {
@@ -73,18 +83,22 @@ test('googleAuthService: getGoogleUserInfo existe', () => {
   assert.equal(typeof service.getGoogleUserInfo, 'function');
 });
 
-// ── Google Auth Service: findOrCreateUser verifica email ──
+// ── Google Auth Service: login/register verificam email ──
 
-test('findOrCreateUser: verifica que email existe', () => {
+test('loginWithGoogle/registerWithGoogle: verificam identity e email verificado', () => {
   const service = require('../src/services/googleAuthService');
-  // La función recibe googleInfo y accede a .email
-  // Verificar vía código fuente
   const src = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'services', 'googleAuthService.js'), 'utf8'
   );
+  assert.equal(typeof service.loginWithGoogle, 'function');
+  assert.equal(typeof service.registerWithGoogle, 'function');
   assert.ok(
-    src.includes('googleInfo.email') || src.includes('email'),
-    'debe usar email'
+    src.includes('googleInfo.email') && src.includes('verifiedEmail'),
+    'deve usar email e verificar verifiedEmail'
+  );
+  assert.ok(
+    src.includes('loginWithGoogle') && src.includes('registerWithGoogle'),
+    'deve expor login e cadastro separados'
   );
 });
 

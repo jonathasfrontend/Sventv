@@ -1,185 +1,107 @@
 /**
- * Avatar upload service — aceita arquivo ou URL remota e envia ao Supabase Storage.
+ * SvenTV API — Serviço de Avatar (URL externa)
  *
- * Hardening desta missão (admin users):
- *  - SVG foi REMOVIDO dos formatos aceitos (rato de XSS ao servir avatar de
- *    origem não confiável — a arquitetura atual não pôde garantir um Content-
- *    Type/Disposition seguro para SVG).
- *  - Validação por MAGIC BYTES (sniffing) além do MIME declarado: o servidor
- *    confia no conteúdo, não no header do cliente.
- *  - Fetch por URL passa por guarda SSRF (`ssrfGuard.assertSafeUrl`) — só
- *    hosts públicos (IPv4/IPv6 público após resolução DNS).
+ * Desde a migração para avatar por URL externa (v2.0.1), NÃO existe mais
+ * upload de arquivo nem Supabase Storage. Este serviço apenas VALIDA a URL
+ * fornecida pelo próprio usuário (ou por um admin) antes de persistir no
+ * campo `avatar` do usuário:
+ *
+ *  - formato verificável (construtor URL nativo);
+ *  - somente protocolo HTTPS (HTTP e todos os demais esquemas são recusados);
+ *  - bloqueio explícito de esquemas perigosos (javascript:, data:, file:,
+ *    ftp:, ws:, etc.) — javascript:/data: seriam vetores de XSS no SSR;
+ *  - bloqueio de credenciais embutidas (user:pass@host) — evita phishing e
+ *    vazamento de credenciais em logs/referrers;
+ *  - guarda SSRF via ssrfGuard.assertSafeUrl: o host deve ser PÚBLICO
+ *    (nunca IP privado/loopback/link-local/metadata/redes reservadas);
+ *  - limite de tamanho da URL (2048 chars).
+ *
+ * IMPORTANTE: o servidor NUNCA baixa a imagem — o navegador do usuário é
+ * quem carrega o recurso (a URL volta apenas em <img src> validado). A
+ * validação SSRF é defesa em profundidade, caso um dia exista fetch.
  */
 
 'use strict';
 
-const axios = require('axios');
-const { randomUUID } = require('crypto');
-const config = require('../config/app');
-const { getSupabaseClient } = require('../utils/supabaseClient');
 const { assertSafeUrl } = require('../utils/ssrfGuard');
 
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
+const MAX_URL_LENGTH = 2048;
+const ALLOWED_PROTOCOLS = new Set(['https:']);
+const BLOCKED_PROTOCOLS = new Set([
+  'javascript:',
+  'data:',
+  'file:',
+  'ftp:',
+  'ftps:',
+  'sftp:',
+  'tel:',
+  'mailto:',
+  'ws:',
+  'wss:',
+  'http:',
 ]);
 
-const MIME_EXT = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
+const httpError = (message, code = 'INVALID_AVATAR_URL') => {
+  const err = new Error(message);
+  err.statusCode = 422;
+  err.code = code;
+  return err;
 };
 
-const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+/**
+ * Valida e normaliza uma URL de avatar externa.
+ *
+ * @param {string} imageUrl - URL HTTPS da imagem de avatar
+ * @returns {Promise<string>} URL validada e normalizada
+ * @throws {Error} statusCode 422 (INVALID_AVATAR_URL) ou SSRF_BLOCKED
+ */
+const validateAvatarUrl = async (imageUrl) => {
+  const value = typeof imageUrl === 'string' ? imageUrl.trim() : '';
 
-// Detectores de magic bytes (assinatura binária real do arquivo).
-const MAGIC_DETECTORS = [
-  {
-    mime: 'image/jpeg',
-    test: (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  },
-  {
-    mime: 'image/png',
-    test: (b) =>
-      b.length >= 8 &&
-      b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 &&
-      b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a,
-  },
-  {
-    mime: 'image/gif',
-    test: (b) => b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38,
-  },
-  {
-    mime: 'image/webp',
-    test: (b) =>
-      b.length >= 12 &&
-      String.fromCharCode(b[0], b[1], b[2], b[3]) === 'RIFF' &&
-      String.fromCharCode(b[8], b[9], b[10], b[11]) === 'WEBP',
-  },
-];
-
-const detectImageMime = (buffer) => {
-  const found = MAGIC_DETECTORS.find((detector) => detector.test(buffer));
-  return found ? found.mime : null;
-};
-
-const validateImageBuffer = (buffer, declaredMime) => {
-  if (!ALLOWED_MIME.has(declaredMime)) {
-    const err = new Error('Formato de imagem não suportado. Use JPG, PNG, WEBP ou GIF.');
-    err.statusCode = 422;
-    throw err;
+  if (!value) {
+    throw httpError('Informe uma URL de imagem HTTPS válida.');
   }
 
-  const detected = detectImageMime(buffer);
-  if (!detected || detected !== declaredMime) {
-    const err = new Error('O conteúdo do arquivo não corresponde ao formato informado.');
-    err.statusCode = 422;
-    throw err;
-  }
-};
-
-const buildFilePath = (userId, contentType) => {
-  const ext = MIME_EXT[contentType] || 'bin';
-  return `${userId}/${Date.now()}-${randomUUID()}.${ext}`;
-};
-
-const uploadBufferToSupabase = async (buffer, contentType, userId) => {
-  const supabase = getSupabaseClient();
-
-  validateImageBuffer(buffer, contentType);
-
-  const filePath = buildFilePath(userId, contentType);
-
-  const { error } = await supabase.storage
-    .from(config.supabase.bucketAvatars)
-    .upload(filePath, buffer, {
-      contentType,
-      upsert: true,
-    });
-
-  if (error) {
-    const err = new Error(`Falha ao enviar avatar para o storage: ${error.message}`);
-    err.statusCode = 500;
-    throw err;
+  if (value.length > MAX_URL_LENGTH) {
+    throw httpError(`A URL deve ter no máximo ${MAX_URL_LENGTH} caracteres.`);
   }
 
-  const { data } = supabase.storage.from(config.supabase.bucketAvatars).getPublicUrl(filePath);
-  return data?.publicUrl;
-};
-
-const fetchImageFromUrl = async (imageUrl) => {
-  // Guarda SSRF ANTES de qualquer resolução/requisição externa.
-  // Lança 422 (code SSRF_BLOCKED, mensagem genérica) — nunca expõe host.
-  await assertSafeUrl(imageUrl);
-
+  let url;
   try {
-    const response = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 10000,
-      maxContentLength: MAX_SIZE_BYTES,
-      headers: { 'User-Agent': 'SvenTV-Avatar/2.0' },
-    });
-
-    const contentType = response.headers['content-type']?.split(';')[0]?.trim();
-    if (!contentType) {
-      const err = new Error('Não foi possível determinar o tipo da imagem remota.');
-      err.statusCode = 422;
-      throw err;
-    }
-
-    const buffer = Buffer.from(response.data);
-    if (buffer.length > MAX_SIZE_BYTES) {
-      const err = new Error('Imagem maior que 5MB. Reduza o tamanho antes de enviar.');
-      err.statusCode = 422;
-      throw err;
-    }
-
-    return { buffer, contentType };
-  } catch (error) {
-    // Erros já tipados (conteúdo/tamanho) passam adiante; falha de
-    // transporte vira mensagem genérica.
-    if (error && error.statusCode) throw error;
-
-    const err = new Error('Não foi possível baixar a imagem da URL informada.');
-    err.statusCode = 422;
-    throw err;
-  }
-};
-
-const uploadAvatar = async ({ file, imageUrl, userId }) => {
-  if (!file && !imageUrl) {
-    const err = new Error('Envie um arquivo ou informe uma URL de imagem.');
-    err.statusCode = 422;
-    throw err;
+    url = new URL(value);
+  } catch (_) {
+    throw httpError('URL malformada. Use o formato https://exemplo.com/imagem.png.');
   }
 
-  if (file && file.size > MAX_SIZE_BYTES) {
-    const err = new Error('Imagem maior que 5MB.');
-    err.statusCode = 422;
-    throw err;
+  const protocol = url.protocol.toLowerCase();
+
+  if (BLOCKED_PROTOCOLS.has(protocol)) {
+    throw httpError('Protocolo de URL não permitido para avatar.');
   }
 
-  let buffer;
-  let contentType;
-
-  if (file) {
-    buffer = file.buffer;
-    contentType = file.mimetype;
-  } else {
-    const fetched = await fetchImageFromUrl(imageUrl);
-    buffer = fetched.buffer;
-    contentType = fetched.contentType;
+  if (!ALLOWED_PROTOCOLS.has(protocol)) {
+    throw httpError('Use apenas URLs HTTPS.');
   }
 
-  return uploadBufferToSupabase(buffer, contentType, userId);
+  if (url.username || url.password) {
+    throw httpError('A URL do avatar não pode conter credenciais embutidas.');
+  }
+
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (!hostname) {
+    throw httpError('A URL do avatar deve ter um host válido.');
+  }
+
+  // Guarda SSRF: host deve resolver para endereço PÚBLICO. Lança 422 com
+  // código SSRF_BLOCKED e mensagem genérica (nunca expõe o hostname).
+  await assertSafeUrl(url.href);
+
+  return url.href;
 };
 
 module.exports = {
-  uploadAvatar,
-  detectImageMime,
-  validateImageBuffer,
-  ALLOWED_MIME,
+  validateAvatarUrl,
+  MAX_URL_LENGTH,
+  ALLOWED_PROTOCOLS,
+  BLOCKED_PROTOCOLS,
 };

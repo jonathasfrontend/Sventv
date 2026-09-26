@@ -233,6 +233,29 @@ async function del(key) {
 }
 
 /**
+ * Renova (ou define) o TTL de uma chave existente — o "heartbeat" de um lease.
+ *
+ * `incrWithTTL` só aplica a expiração na primeira criação (SET NX), então
+ * qualquer coisa que precise de janela CORRENTE (uma vaga de stream ativa)
+ * tem de renovar a expiração por conta própria.
+ *
+ * @param {string} key       chave já com namespace
+ * @param {number} windowMs  nova janela em milissegundos
+ * @returns {Promise<boolean>} true se a chave existe e o TTL foi aplicado
+ * @throws {Error} se o Redis falhar (o chamador decide o fallback)
+ */
+async function expire(key, windowMs) {
+  const client = getRedisClient();
+  if (!client) throw new Error('redis-not-configured');
+
+  const ms = Math.max(1, Math.ceil(windowMs));
+  // PEXPIRE retorna 0 quando a chave não existe mais (já expirou) — nesse
+  // caso não há o que renovar e o chamador trata como lease perdido.
+  const res = await client.pexpire(key, ms);
+  return res === 1 || res === true;
+}
+
+/**
  * Reseta o cache de disponibilidade (usado em testes e em pontos onde uma
  * falha transitória recém-cacheada precisa ser reavaliada imediatamente).
  */
@@ -249,6 +272,7 @@ module.exports = {
   setWithTTL,
   get,
   del,
+  expire,
   makeKey,
   resetAvailabilityCache,
 };

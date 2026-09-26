@@ -121,15 +121,6 @@
   flex-shrink: 0;
 }
 
-/* ── reCAPTCHA ────────────────────────────────────────────── */
-.captcha-wrap {
-  min-height: 78px;
-  display: flex;
-  justify-content: center;
-  transform: scale(0.95);
-  transform-origin: center;
-}
-
 /* ── Campo de senha com botão de toggle ──────────────────── */
 .input-password-wrap {
   position: relative;

@@ -24,18 +24,24 @@ const withPrismaRetention = (mocks, fn) => {
   const saved = {
     'requestUsage.deleteMany': prisma.requestUsage.deleteMany,
     'auditLog.deleteMany': prisma.auditLog.deleteMany,
+    'ipBlocklist.deleteMany': prisma.ipBlocklist && prisma.ipBlocklist.deleteMany,
   };
   const set = (path, val) => {
     const parts = path.split('.');
     let obj = prisma;
-    for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!obj[parts[i]]) obj[parts[i]] = {};
+      obj = obj[parts[i]];
+    }
     obj[parts[parts.length - 1]] = val;
   };
   for (const [path, mock] of Object.entries(mocks || {})) set(path, mock);
   return Promise.resolve()
     .then(fn)
     .finally(() => {
-      for (const [path, orig] of Object.entries(saved)) set(path, orig);
+      for (const [path, orig] of Object.entries(saved)) {
+        if (orig !== undefined) set(path, orig);
+      }
     });
 };
 
@@ -43,13 +49,18 @@ const withRetentionConfig = (overrides, fn) => {
   const saved = {
     requestUsageDays: config.retention.requestUsageDays,
     auditLogDays: config.retention.auditLogDays,
+    ipBlocklistRetentionDays: config.ipAccess.retentionDays,
   };
   Object.assign(config.retention, overrides);
+  config.ipAccess.retentionDays = overrides.ipBlocklistRetentionDays !== undefined
+    ? overrides.ipBlocklistRetentionDays
+    : saved.ipBlocklistRetentionDays;
   return Promise.resolve()
     .then(fn)
     .finally(() => {
       config.retention.requestUsageDays = saved.requestUsageDays;
       config.retention.auditLogDays = saved.auditLogDays;
+      config.ipAccess.retentionDays = saved.ipBlocklistRetentionDays;
     });
 };
 
@@ -101,7 +112,7 @@ test('runRetention: flag 0 desativa a limpeza daquele tipo (sem chamar o banco)'
       },
       async () => {
         const out = await runRetention();
-        assert.deepEqual(out, { requestUsageDeleted: 0, auditLogsDeleted: 0 });
+        assert.deepEqual(out, { requestUsageDeleted: 0, auditLogsDeleted: 0, ipBlocklistDeleted: 0 });
       }
     );
     assert.equal(metricsSnapshot().counters.retentionRuns, r0.retentionRuns + 1);
@@ -133,4 +144,49 @@ test('runRetention: falha de banco PROPAGA (nunca mascara o problema do cron)', 
       await assert.rejects(() => runRetention(), /pg timeout/);
     }
   );
+});
+
+// ── ip_blocklist (WAF / IP Access Control) ──────────────────
+
+test('runRetention: ip_blocklist só expira histórico DESBLOQUEADO antigo', async () => {
+  let ipArgs = null;
+  let usageCalled = false;
+  const t0 = Date.now();
+  await withRetentionConfig({ requestUsageDays: 0, auditLogDays: 0, ipBlocklistRetentionDays: 30 }, async () => {
+    await withPrismaRetention(
+      {
+        'requestUsage.deleteMany': async () => { usageCalled = true; return { count: 1 }; },
+        'auditLog.deleteMany': async () => { usageCalled = true; return { count: 1 }; },
+        'ipBlocklist.deleteMany': async (args) => { ipArgs = args; return { count: 4 }; },
+      },
+      async () => {
+        const r0 = metricsSnapshot().counters;
+        const out = await runRetention();
+        assert.equal(out.ipBlocklistDeleted, 4);
+        assert.equal(usageCalled, false, 'request/audit seguem no padrão (0 = desligado)');
+        assert.equal(metricsSnapshot().counters.ipBlocklistRetentionDeleted, r0.ipBlocklistRetentionDeleted + 4);
+      }
+    );
+  });
+  assert.ok(ipArgs, 'deletou ip_blocklist');
+  assert.deepEqual(ipArgs.where.active, false, 'NUNCA toca bloqueio ativo');
+  assert.equal(ipArgs.where.unblockedAt.not, null, 'só registros JÁ desbloqueados');
+  const DAY = 86400000;
+  const cutoff = ipArgs.where.unblockedAt.lt.getTime();
+  assert.ok(cutoff <= t0 - 30 * DAY + 1000 && cutoff >= t0 - 30 * DAY - 1000,
+    `corte ip_blocklist ~30d (${new Date(cutoff).toISOString()})`);
+});
+
+test('runRetention: ip_blocklist desligado (padrão) não chama deleteMany', async () => {
+  await withRetentionConfig({ requestUsageDays: 0, auditLogDays: 0, ipBlocklistRetentionDays: 0 }, async () => {
+    await withPrismaRetention(
+      {
+        'ipBlocklist.deleteMany': async () => { throw new Error('nao deveria chamar'); },
+      },
+      async () => {
+        const out = await runRetention();
+        assert.equal(out.ipBlocklistDeleted, 0);
+      }
+    );
+  });
 });

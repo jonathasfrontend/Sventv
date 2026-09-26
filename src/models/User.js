@@ -23,15 +23,28 @@ const VALID_ROLES = new Set(['user', 'admin']);
 const mapRowToModel = (row, includeSensitive = false) => {
   if (!row) return null;
 
+  // Avatar EFETIVO = avatar personalizado (URL externa) OU, na ausência
+  // dele, o picture do Google. `avatarSource` indica qual fonte está ativa
+  // (o campo `avatar` do banco guarda SOMENTE o personalizado).
+  const customAvatar = row.avatar || '';
+  const googleAvatarUrl = row.googleAvatarUrl || null;
+  const avatarSource = customAvatar
+    ? 'custom'
+    : googleAvatarUrl
+      ? 'google'
+      : 'none';
+
   return new User({
     _id: row.id,
     id: row.id,
     name: row.name,
     email: row.email,
     password: includeSensitive ? row.password || null : undefined,
-    avatar: row.avatar || '',
-    googleId: row.google_id || null,
-    authProvider: row.auth_provider || 'local',
+    avatar: customAvatar || googleAvatarUrl || '',
+    googleAvatarUrl,
+    avatarSource,
+    googleId: row.googleId || null,
+    authProvider: row.authProvider || 'local',
     apiToken: includeSensitive ? row.apiToken || null : undefined,
     status: row.status,
     role: row.role,
@@ -47,6 +60,7 @@ const mapRowToModel = (row, includeSensitive = false) => {
     termsVersion: row.termsVersion || null,
     lastLogin: row.lastLogin || null,
     lastLoginIp: row.lastLoginIp || null,
+    registrationIp: row.registrationIp || null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -59,11 +73,13 @@ const toPublicJson = (user) => {
     name: user.name,
     email: user.email,
     avatar: user.avatar,
+    avatarSource: user.avatarSource || 'none',
     status: user.status,
     role: user.role,
     roleId: user.roleId || null,
     lastLogin: user.lastLogin,
     lastLoginIp: user.lastLoginIp,
+    registrationIp: user.registrationIp || null,
     termsAcceptedAt: user.termsAcceptedAt,
     termsVersion: user.termsVersion,
     createdAt: user.createdAt,
@@ -221,7 +237,7 @@ class User {
     );
   }
 
-  static async create({ name, email, password, avatar, termsAcceptedAt, termsVersion, googleId, authProvider }) {
+  static async create({ name, email, password, avatar, googleAvatarUrl, termsAcceptedAt, termsVersion, googleId, authProvider, registrationIp }) {
     const normalizedEmail = normalizeEmail(email);
 
     const rounds = config.security.bcryptRounds;
@@ -234,6 +250,7 @@ class User {
       email: normalizedEmail,
       password: passwordHash,
       avatar: avatar || '',
+      googleAvatarUrl: googleAvatarUrl || null,
       googleId: googleId || null,
       authProvider: authProvider || 'local',
       status: 'active',
@@ -243,6 +260,7 @@ class User {
       lockUntil: null,
       lastLogin: null,
       lastLoginIp: null,
+      registrationIp: registrationIp || null,
       apiTokenVersion: 0,
       apiTokenActive: true,
       accountRestricted: false,
@@ -307,6 +325,9 @@ class User {
     }
 
     if (normalized.avatar !== undefined) payload.avatar = normalized.avatar;
+    if (normalized.googleAvatarUrl !== undefined) {
+      payload.googleAvatarUrl = normalized.googleAvatarUrl;
+    }
     if (normalized.lastLoginIp !== undefined) payload.lastLoginIp = normalized.lastLoginIp;
 
     if (normalized.status !== undefined) {

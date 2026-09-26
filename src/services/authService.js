@@ -15,6 +15,7 @@ const metrics = require('../utils/metrics');
 const alertService = require('./alertService');
 const { isDatabaseConnected, createDatabaseUnavailableError } = require('../utils/dbState');
 const { passwordPolicyErrors } = require('../utils/passwordPolicy');
+const { validateAvatarUrl } = require('./avatarService');
 
 // ─────────────────────────────────────────────────────────────
 // Tipos de resposta (JSDoc apenas para DX)
@@ -42,11 +43,11 @@ const authService = {
   /**
    * Registra um novo usuário.
    *
-   * @param {{ name: string, email: string, password: string, confirmPassword?: string, acceptedTerms?: boolean, avatar?: string }} data
+   * @param {{ name: string, email: string, password: string, confirmPassword?: string, acceptedTerms?: boolean, avatar?: string, registrationIp?: string|null }} data
    * @returns {Promise<RegisterResult>}
    * @throws {Error} com propriedade `statusCode`
    */
-  async register({ name, email, password, confirmPassword, acceptedTerms, avatar }) {
+  async register({ name, email, password, confirmPassword, acceptedTerms, avatar, registrationIp }) {
     if (!isDatabaseConnected()) {
       throw createDatabaseUnavailableError(
         'Serviço de autenticação temporariamente indisponível. Tente novamente em instantes.'
@@ -85,13 +86,20 @@ const authService = {
     // Cria o usuário com senha hash e token de API inicial
     let user;
     try {
+      // Avatar (se informado) é URL externa HTTPS validada — o mesmo
+      // avatarService das rotas de perfil (anti-XSS por javascript:/data:).
+      const validatedAvatar = avatar && String(avatar).trim()
+        ? await validateAvatarUrl(avatar)
+        : '';
+
       user = await User.create({
         name: name.trim(),
         email: email.toLowerCase().trim(),
         password,
-        avatar: avatar || '',
+        avatar: validatedAvatar,
         termsAcceptedAt: new Date(),
         termsVersion: config.terms.version,
+        registrationIp: registrationIp || null,
       });
     } catch (err) {
       // Corrida de registro: e-mail criado entre o pre-check e o insert

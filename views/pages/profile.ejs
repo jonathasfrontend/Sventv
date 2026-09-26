@@ -12,7 +12,7 @@
     <aside class="profile-sidebar">
       <div class="profile-avatar-wrap">
         <div class="profile-avatar" id="profileAvatarDisplay">
-          <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" id="profileAvatarImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
+          <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" referrerpolicy="no-referrer" id="profileAvatarImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
           <span id="profileAvatarInitial" <%= locals.user?.avatar ? 'hidden' : '' %>><%= locals.user?.name ? locals.user.name.charAt(0).toUpperCase() : 'U' %></span>
         </div>
         <div class="profile-avatar-info">
@@ -73,24 +73,27 @@
         <h3 class="profile-section-title">Editar Perfil</h3>
         <div class="avatar-card">
           <div class="avatar-preview" id="avatarPreview">
-            <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" id="avatarPreviewImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
+            <img src="<%= locals.user?.avatar || '' %>" alt="Avatar" referrerpolicy="no-referrer" id="avatarPreviewImg" <%= locals.user?.avatar ? '' : 'hidden' %>>
             <span id="avatarPreviewInitial" <%= locals.user?.avatar ? 'hidden' : '' %>><%= locals.user?.name ? locals.user.name.charAt(0).toUpperCase() : 'U' %></span>
           </div>
           <form id="avatarForm" class="avatar-form" novalidate>
             <div class="form-group">
-              <label class="form-label" for="avatarUrl">URL da imagem</label>
+              <label class="form-label" for="avatarUrl">URL da imagem (HTTPS)</label>
               <input type="url" id="avatarUrl" name="imageUrl" class="form-input"
                 placeholder="https://exemplo.com/avatar.png">
+              <p class="form-hint">Apenas URLs HTTPS de terceiros (ex.: Gravatar, CDNs). Nenhum arquivo é enviado ao servidor.</p>
             </div>
-            <div class="avatar-divider">ou</div>
-            <div class="form-group">
-              <label class="form-label" for="avatarFile">Upload de imagem</label>
-              <input type="file" id="avatarFile" name="avatar" accept="image/*" class="form-input">
-              <p class="form-hint">Máx. 5MB. Formatos: JPG, PNG, WEBP, GIF ou SVG.</p>
+            <div class="avatar-actions">
+              <button type="submit" class="btn btn-primary btn-sm" id="saveAvatarBtn">
+                <span class="btn-text">Atualizar Avatar</span>
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="removeAvatarBtn"<%= (locals.user && locals.user.avatarSource === 'custom') ? '' : ' hidden' %>>
+                Remover avatar
+              </button>
             </div>
-            <button type="submit" class="btn btn-primary btn-sm" id="saveAvatarBtn">
-              <span class="btn-text">Atualizar Avatar</span>
-            </button>
+            <p class="form-hint" id="avatarGoogleHint"<%= (locals.user && locals.user.avatarSource === 'custom' && !locals.user.googleId) ? '' : ((locals.user && locals.user.avatarSource === 'custom') ? ' hidden' : '') %>>
+              <span id="avatarGoogleHintText"><%= (locals.user && locals.user.avatarSource === 'google') ? 'Usando a foto do seu Google. Defina uma URL acima para usar um avatar personalizado.' : (locals.user && locals.user.avatarSource === 'custom') ? 'Usando o avatar personalizado. Remova para voltar ao Google.' : 'Sem avatar personalizado.' %></span>
+            </p>
             <div id="avatarAlert" class="form-alert" hidden></div>
           </form>
         </div>
@@ -178,7 +181,7 @@
               </svg>
               <span class="btn-text">Vincular Conta Google</span>
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="unlinkGoogleBtn" <%= locals.user?.googleId ? '' : 'hidden' %>>
+            <button type="button" class="btn btn-ghost btn-sm" id="unlinkGoogleBtn" <%= (locals.user?.googleId && locals.user?.authProvider !== 'google') ? '' : 'hidden' %>>
               <i class="ph ph-link-break" aria-hidden="true"></i> Desvincular Google
             </button>
           </div>
@@ -209,6 +212,7 @@
   email: locals.user ? locals.user.email : null,
   role:  locals.user ? locals.user.role  : null,
   avatar: locals.user ? locals.user.avatar : null,
+  avatarSource: locals.user ? locals.user.avatarSource : null,
   googleId: locals.user ? locals.user.googleId : null,
   authProvider: locals.user ? locals.user.authProvider : null
 }) %></script>

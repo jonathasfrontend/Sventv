@@ -2,13 +2,13 @@
 const TrendingService = require('../services/trendingService');
 
 /**
- * Controller de Tendências (Top 10 do catálogo).
+ * Controller de Tendências — SOMENTE programações ao vivo em alta.
  *
- * Só alimenta a dashboard com metadados públicos (título, imagem de catálogo,
- * gênero/duração) — nunca URLs de stream. Mesmo contrato dos demais endpoints:
- * `{ success, message, data }`. Feature desligada (TRENDING_ENABLED=false) ou
- * provedor indisponível → lista vazia com success:true (fail-open; o frontend
- * esconde o carrossel), nunca 500.
+ * Só alimenta a dashboard com metadados públicos (título, canal, gênero e a
+ * arte da programação) — nunca URLs de stream. Mesmo contrato dos demais
+ * endpoints: `{ success, message, data }`. Feature desligada
+ * (TRENDING_ENABLED=false) ou provedor indisponível → lista vazia com
+ * success:true (fail-open; o frontend esconde o carrossel), nunca 500.
  */
 class TrendingController {
   constructor() {
@@ -17,7 +17,8 @@ class TrendingController {
 
   /**
    * GET /api/trending
-   * Retorna filmes, séries e canais em UMA chamada (carrosséis da dashboard).
+   * Retorna as programações ao vivo em alta em UMA chamada (carrossel da
+   * dashboard).
    */
   list = async (_req, res) => {
     try {
@@ -26,65 +27,17 @@ class TrendingController {
 
       return res.status(200).json({
         success: true,
-        message: 'Tendências carregadas com sucesso',
+        message: 'Programações ao vivo em alta carregadas com sucesso',
         data: snapshot,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
       // Fail-open: nunca vira 500 por causa de provedor de metadados.
-      console.error('Erro ao obter tendências:', error.message);
+      console.error('Erro ao obter programações ao vivo em alta:', error.message);
       return res.status(200).json({
         success: true,
-        message: 'Tendências temporariamente indisponíveis',
+        message: 'Programações ao vivo em alta temporariamente indisponíveis',
         data: emptySnapshot(),
-        timestamp: new Date().toISOString(),
-      });
-    }
-  };
-
-  /**
-   * GET /api/trending/movies
-   */
-  getMovies = async (_req, res) => {
-    try {
-      await this.trendingService.ensureLoaded();
-      const movies = this.trendingService.getMovies();
-      return res.status(200).json({
-        success: true,
-        message: 'Filmes em alta carregados com sucesso',
-        data: { total: movies.length, movies },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('Erro ao obter filmes em alta:', error.message);
-      return res.status(200).json({
-        success: true,
-        message: 'Filmes em alta temporariamente indisponíveis',
-        data: { total: 0, movies: [] },
-        timestamp: new Date().toISOString(),
-      });
-    }
-  };
-
-  /**
-   * GET /api/trending/series
-   */
-  getSeries = async (_req, res) => {
-    try {
-      await this.trendingService.ensureLoaded();
-      const series = this.trendingService.getSeries();
-      return res.status(200).json({
-        success: true,
-        message: 'Séries em alta carregadas com sucesso',
-        data: { total: series.length, series },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('Erro ao obter séries em alta:', error.message);
-      return res.status(200).json({
-        success: true,
-        message: 'Séries em alta temporariamente indisponíveis',
-        data: { total: 0, series: [] },
         timestamp: new Date().toISOString(),
       });
     }
@@ -104,10 +57,10 @@ class TrendingController {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('Erro ao obter programações em alta:', error.message);
+      console.error('Erro ao obter programações ao vivo em alta:', error.message);
       return res.status(200).json({
         success: true,
-        message: 'Programações em alta temporariamente indisponíveis',
+        message: 'Programações ao vivo em alta temporariamente indisponíveis',
         data: { total: 0, channels: [] },
         timestamp: new Date().toISOString(),
       });
@@ -116,7 +69,7 @@ class TrendingController {
 }
 
 function emptySnapshot() {
-  return { fetchedAt: null, cached: false, total: { movies: 0, series: 0, channels: 0 }, movies: [], series: [], channels: [] };
+  return { fetchedAt: null, cached: false, total: { channels: 0 }, channels: [] };
 }
 
 module.exports = TrendingController;
